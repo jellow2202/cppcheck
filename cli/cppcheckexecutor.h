@@ -30,6 +30,7 @@
 class CppCheck;
 class Library;
 class Settings;
+class TeamCityOutput;
 
 /**
  * This class works as an example of how CppCheck can be used in external
@@ -161,6 +162,11 @@ private:
      * Pointer to current settings; set while check() is running.
      */
     const Settings* _settings;
+
+    /**
+     * Pointer to a TeamCity output formater if \c --teamcity was provided
+     */
+    TeamCityOutput* teamcityOutput;
 
     /**
      * Used to filter out duplicate error messages.

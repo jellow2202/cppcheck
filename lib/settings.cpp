@@ -38,6 +38,7 @@ Settings::Settings()
       force(false),
       relativePaths(false),
       xml(false), xml_version(2),
+      teamcityOutput(false),
       jobs(1),
       loadAverage(0),
       exitCode(0),

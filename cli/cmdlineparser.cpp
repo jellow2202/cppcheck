@@ -768,6 +768,12 @@ bool CmdLineParser::parseFromArgs(int argc, const char* const argv[])
                 maxconfigs = true;
             }
 
+            // Enable TeamCity compatible output
+            // specs: https://confluence.jetbrains.com/display/TCD10/Build+Script+Interaction+with+TeamCity
+            else if (std::strcmp(argv[i], "--teamcity") == 0) {
+                _settings->teamcityOutput = true;
+            }
+
             // Print help
             else if (std::strcmp(argv[i], "-h") == 0 || std::strcmp(argv[i], "--help") == 0) {
                 _pathnames.clear();
@@ -823,6 +829,17 @@ bool CmdLineParser::parseFromArgs(int argc, const char* const argv[])
     // Use paths _pathnames if no base paths for relative path output are given
     if (_settings->basePaths.empty() && _settings->relativePaths)
         _settings->basePaths = _pathnames;
+
+    if (_settings->teamcityOutput) {
+        if (_settings->xml && _settings->outputFile.empty()) {
+            printMessage("cppcheck: Option --teamcity conflicts with --xml!\n"
+                         "If both options are present --output-file must also be supply to redirect the xml output.");
+            return false;
+        }
+        _settings->reportProgress = true;
+        _settings->quiet = true;
+    }
+
 
     return true;
 }
@@ -1027,6 +1044,13 @@ void CmdLineParser::printHelp()
               "    --suppressions-list=<file>\n"
               "                         Suppress warnings listed in the file. Each suppression\n"
               "                         is in the same format as <spec> above.\n"
+              "    --teamcity           Enables TeamCity compatible output.\n"
+              "                         (requires TeamCity 10.x / 2017.x or later)\n"
+              "                         This implies the --report-progress and --quiet options.\n"
+              "                         The template options --template= and --template-location=\n"
+              "                         will be ignored.\n"
+              "                         Can not be combined with --xml unless --output-file= is\n"
+              "                         provided to redirect the xml output.\n"
               "    --template='<text>'  Format the error messages. Available fields:\n"
               "                           {file}              file name\n"
               "                           {line}              line number\n"

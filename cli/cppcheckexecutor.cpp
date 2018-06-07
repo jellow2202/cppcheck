@@ -31,6 +31,7 @@
 #include "settings.h"
 #include "standards.h"
 #include "suppressions.h"
+#include "teamcityoutput.h"
 #include "threadexecutor.h"
 #include "utils.h"
 #include "checkunusedfunctions.h"
@@ -79,13 +80,14 @@
 /*static*/ FILE* CppCheckExecutor::exceptionOutput = stdout;
 
 CppCheckExecutor::CppCheckExecutor()
-    : _settings(nullptr), latestProgressOutputTime(0), errorOutput(nullptr), errorlist(false)
+    : _settings(nullptr), teamcityOutput(nullptr), latestProgressOutputTime(0), errorOutput(nullptr), errorlist(false)
 {
 }
 
 CppCheckExecutor::~CppCheckExecutor()
 {
     delete errorOutput;
+    delete teamcityOutput;
 }
 
 bool CppCheckExecutor::parseFromArgs(CppCheck *cppcheck, int argc, const char* const argv[])
@@ -194,6 +196,10 @@ int CppCheckExecutor::check(int argc, const char* const argv[])
     }
     if (cppCheck.settings().exceptionHandling) {
         return check_wrapper(cppCheck, argc, argv);
+    }
+    if (settings.teamcityOutput) {
+        teamcityOutput = new TeamCityOutput(_settings);
+        teamcityOutput->reportInspectionTypes();
     }
     return check_internal(cppCheck, argc, argv);
 }
@@ -990,12 +996,18 @@ void CppCheckExecutor::reportErr(const std::string &errmsg)
 
 void CppCheckExecutor::reportOut(const std::string &outmsg)
 {
-    std::cout << ansiToOEM(outmsg, true) << std::endl;
+    if (teamcityOutput)
+        teamcityOutput->reportOut(outmsg);
+    else
+        std::cout << ansiToOEM(outmsg, true) << std::endl;
 }
 
 void CppCheckExecutor::reportProgress(const std::string &filename, const char stage[], const std::size_t value)
 {
-    (void)filename;
+    if (teamcityOutput) {
+        teamcityOutput->reportProgress(filename, stage, value);
+        return;
+    }
 
     if (!latestProgressOutputTime)
         return;
@@ -1037,6 +1049,11 @@ void CppCheckExecutor::reportErr(const ErrorLogger::ErrorMessage &msg)
 {
     if (errorlist) {
         reportOut(msg.toXML());
+    } else if (teamcityOutput) {
+        teamcityOutput->reportErr(msg);
+        if (_settings->xml) {
+            reportErr(msg.toXML());
+        }
     } else if (_settings->xml) {
         reportErr(msg.toXML());
     } else {

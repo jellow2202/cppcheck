@@ -145,6 +145,9 @@ public:
     /** @brief XML version (--xml-version=..) */
     int xml_version;
 
+    /** @brief output TeamCity messages (--teamcity) */
+    bool teamcityOutput;
+
     /** @brief How many processes/threads should do checking at the same
         time. Default is 1. (-j N) */
     unsigned int jobs;

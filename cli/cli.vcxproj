@@ -394,6 +394,7 @@
     <ClInclude Include="cmdlineparser.h" />
     <ClInclude Include="cppcheckexecutor.h" />
     <ClInclude Include="filelister.h" />
+    <ClInclude Include="teamcityoutput.h" />
     <ClInclude Include="threadexecutor.h" />
   </ItemGroup>
   <ItemGroup>
@@ -406,6 +407,7 @@
     <ClCompile Include="cppcheckexecutor.cpp" />
     <ClCompile Include="filelister.cpp" />
     <ClCompile Include="main.cpp" />
+    <ClCompile Include="teamcityoutput.cpp" />
     <ClCompile Include="threadexecutor.cpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
