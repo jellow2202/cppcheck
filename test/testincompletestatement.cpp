@@ -1,6 +1,6 @@
 /*
  * Cppcheck - A tool for static C/C++ code analysis
- * Copyright (C) 2007-2017 Cppcheck team.
+ * Copyright (C) 2007-2018 Cppcheck team.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -59,7 +59,7 @@ private:
         checkOther.checkIncompleteStatement();
     }
 
-    void run() override {
+    void run() OVERRIDE {
         settings.addEnabled("warning");
 
         TEST_CASE(test1);
@@ -79,6 +79,7 @@ private:
         TEST_CASE(cast);                // #3009 : (struct Foo *)123.a = 1;
         TEST_CASE(increment);           // #3251 : FP for increment
         TEST_CASE(cpp11init);           // #5493 : int i{1};
+        TEST_CASE(cpp11init2);          // #8449
         TEST_CASE(block);               // ({ do_something(); 0; })
         TEST_CASE(mapindex);
     }
@@ -269,6 +270,13 @@ private:
         check("void f() {\n"
               "    int x{1};\n"
               "}");
+        ASSERT_EQUALS("", errout.str());
+    }
+
+    void cpp11init2() {
+        check("x<string> handlers{\n"
+              "  { \"mode2\", []() { return 2; } },\n"
+              "};");
         ASSERT_EQUALS("", errout.str());
     }
 

@@ -30,7 +30,7 @@ public:
 
 private:
 
-    void run() override {
+    void run() OVERRIDE {
         TEST_CASE(isint);
         TEST_CASE(isbin);
         TEST_CASE(isdec);
@@ -371,6 +371,15 @@ private:
         ASSERT_EQUALS_DOUBLE(0.0,    MathLib::toDoubleNumber("+0.0"),     0.000001);
         ASSERT_EQUALS_DOUBLE('0',    MathLib::toDoubleNumber("'0'"),      0.000001);
 
+        ASSERT_EQUALS_DOUBLE(192, MathLib::toDoubleNumber("0x0.3p10"), 0.000001);
+        ASSERT_EQUALS_DOUBLE(5.42101e-20, MathLib::toDoubleNumber("0x1p-64"), 1e-20);
+        ASSERT_EQUALS_DOUBLE(3.14159, MathLib::toDoubleNumber("0x1.921fb5p+1"), 0.000001);
+        ASSERT_EQUALS_DOUBLE(2006, MathLib::toDoubleNumber("0x1.f58000p+10"), 0.000001);
+        ASSERT_EQUALS_DOUBLE(1e-010, MathLib::toDoubleNumber("0x1.b7cdfep-34"), 0.000001);
+        ASSERT_EQUALS_DOUBLE(.484375, MathLib::toDoubleNumber("0x1.fp-2"), 0.000001);
+        ASSERT_EQUALS_DOUBLE(9.0, MathLib::toDoubleNumber("0x1.2P3"), 0.000001);
+        ASSERT_EQUALS_DOUBLE(0.0625, MathLib::toDoubleNumber("0x.1P0"), 0.000001);
+
         // verify: string --> double --> string conversion
         ASSERT_EQUALS("1.0",  MathLib::toString(MathLib::toDoubleNumber("1.0f")));
         ASSERT_EQUALS("1.0",  MathLib::toString(MathLib::toDoubleNumber("1.0")));
@@ -598,7 +607,6 @@ private:
 
     void isFloatHex() const {
         // hex number syntax: [sign]0x[hexnumbers][suffix]
-        ASSERT_EQUALS(false, MathLib::isFloatHex(""));
         ASSERT_EQUALS(true, MathLib::isFloatHex("0x1.999999999999ap-4"));
         ASSERT_EQUALS(true, MathLib::isFloatHex("0x0.3p10"));
         ASSERT_EQUALS(true, MathLib::isFloatHex("0x1.fp3"));
@@ -606,7 +614,13 @@ private:
         ASSERT_EQUALS(true, MathLib::isFloatHex("0xcc.ccccccccccdp-11"));
         ASSERT_EQUALS(true, MathLib::isFloatHex("0x3.243F6A88p+03"));
         ASSERT_EQUALS(true, MathLib::isFloatHex("0xA.Fp-10"));
+        ASSERT_EQUALS(true, MathLib::isFloatHex("0x1.2p-10f"));
+        ASSERT_EQUALS(true, MathLib::isFloatHex("0x1.2p+10F"));
+        ASSERT_EQUALS(true, MathLib::isFloatHex("0x1.2p+10l"));
+        ASSERT_EQUALS(true, MathLib::isFloatHex("0x1.2p+10L"));
+        ASSERT_EQUALS(true, MathLib::isFloatHex("0X.2p-0"));
 
+        ASSERT_EQUALS(false, MathLib::isFloatHex(""));
         ASSERT_EQUALS(false, MathLib::isFloatHex("0"));
         ASSERT_EQUALS(false, MathLib::isFloatHex("0x"));
         ASSERT_EQUALS(false, MathLib::isFloatHex("0xa"));
@@ -616,6 +630,10 @@ private:
         ASSERT_EQUALS(false, MathLib::isFloatHex("0x."));
         ASSERT_EQUALS(false, MathLib::isFloatHex("0XP"));
         ASSERT_EQUALS(false, MathLib::isFloatHex("0xx"));
+        ASSERT_EQUALS(false, MathLib::isFloatHex("0x1P+-1"));
+        ASSERT_EQUALS(false, MathLib::isFloatHex("0x1p+10e"));
+        ASSERT_EQUALS(false, MathLib::isFloatHex("0x1p+1af"));
+        ASSERT_EQUALS(false, MathLib::isFloatHex("0x1p+10LL"));
     }
 
     void isIntHex() const {
@@ -650,6 +668,7 @@ private:
         ASSERT_EQUALS(false, MathLib::isIntHex("+0x"));
         ASSERT_EQUALS(false, MathLib::isIntHex("-0x"));
         ASSERT_EQUALS(false, MathLib::isIntHex("0x"));
+        ASSERT_EQUALS(false, MathLib::isIntHex("0xl"));
         ASSERT_EQUALS(false, MathLib::isIntHex("0xx"));
         ASSERT_EQUALS(false, MathLib::isIntHex("-0175"));
         ASSERT_EQUALS(false, MathLib::isIntHex("-0_garbage_"));
@@ -682,75 +701,40 @@ private:
 
     void isValidIntegerSuffix(void) const {
         // negative testing
-        std::string value = "ux";
-        ASSERT_EQUALS(false, MathLib::isValidIntegerSuffix(value.begin(), value.end()));
-
-        value = "ulx";
-        ASSERT_EQUALS(false, MathLib::isValidIntegerSuffix(value.begin(), value.end()));
-
-        value = "lx";
-        ASSERT_EQUALS(false, MathLib::isValidIntegerSuffix(value.begin(), value.end()));
-
-        value = "lux";
-        ASSERT_EQUALS(false, MathLib::isValidIntegerSuffix(value.begin(), value.end()));
-
-        value = "lll";
-        ASSERT_EQUALS(false, MathLib::isValidIntegerSuffix(value.begin(), value.end()));
-
-        value = "garbage";
-        ASSERT_EQUALS(false, MathLib::isValidIntegerSuffix(value.begin(), value.end()));
-
-        value.clear();
-        ASSERT_EQUALS(false, MathLib::isValidIntegerSuffix(value.begin(), value.end()));
-
-        value = "llu ";
-        ASSERT_EQUALS(false, MathLib::isValidIntegerSuffix(value.begin(), value.end()));
-
-        value = "i";
-        ASSERT_EQUALS(false, MathLib::isValidIntegerSuffix(value.begin(), value.end()));
-
-        value = "iX";
-        ASSERT_EQUALS(false, MathLib::isValidIntegerSuffix(value.begin(), value.end()));
-
-        value = "i6X";
-        ASSERT_EQUALS(false, MathLib::isValidIntegerSuffix(value.begin(), value.end()));
-
-        value = "i64X";
-        ASSERT_EQUALS(false, MathLib::isValidIntegerSuffix(value.begin(), value.end()));
-
-        value = "i64 ";
-        ASSERT_EQUALS(false, MathLib::isValidIntegerSuffix(value.begin(), value.end()));
-
-        value = "i66";
-        ASSERT_EQUALS(false, MathLib::isValidIntegerSuffix(value.begin(), value.end()));
+        ASSERT_EQUALS(false, MathLib::isValidIntegerSuffix(""));
+        ASSERT_EQUALS(false, MathLib::isValidIntegerSuffix("ux"));
+        ASSERT_EQUALS(false, MathLib::isValidIntegerSuffix("ulx"));
+        ASSERT_EQUALS(false, MathLib::isValidIntegerSuffix("lx"));
+        ASSERT_EQUALS(false, MathLib::isValidIntegerSuffix("lux"));
+        ASSERT_EQUALS(false, MathLib::isValidIntegerSuffix("lll"));
+        ASSERT_EQUALS(false, MathLib::isValidIntegerSuffix("garbage"));
+        ASSERT_EQUALS(false, MathLib::isValidIntegerSuffix("llu "));
+        ASSERT_EQUALS(false, MathLib::isValidIntegerSuffix("i"));
+        ASSERT_EQUALS(false, MathLib::isValidIntegerSuffix("iX"));
+        ASSERT_EQUALS(false, MathLib::isValidIntegerSuffix("i6X"));
+        ASSERT_EQUALS(false, MathLib::isValidIntegerSuffix("i64X"));
+        ASSERT_EQUALS(false, MathLib::isValidIntegerSuffix("i64 "));
+        ASSERT_EQUALS(false, MathLib::isValidIntegerSuffix("i66"));
 
         // positive testing
-        value = "u";
-        ASSERT_EQUALS(true, MathLib::isValidIntegerSuffix(value.begin(), value.end()));
-
-        value = "ul";
-        ASSERT_EQUALS(true, MathLib::isValidIntegerSuffix(value.begin(), value.end()));
-
-        value = "ull";
-        ASSERT_EQUALS(true, MathLib::isValidIntegerSuffix(value.begin(), value.end()));
-
-        value = "l";
-        ASSERT_EQUALS(true, MathLib::isValidIntegerSuffix(value.begin(), value.end()));
-
-        value = "lu";
-        ASSERT_EQUALS(true, MathLib::isValidIntegerSuffix(value.begin(), value.end()));
-
-        value = "ll";
-        ASSERT_EQUALS(true, MathLib::isValidIntegerSuffix(value.begin(), value.end()));
-
-        value = "llu";
-        ASSERT_EQUALS(true, MathLib::isValidIntegerSuffix(value.begin(), value.end()));
-
-        value = "i64";
-        ASSERT_EQUALS(true, MathLib::isValidIntegerSuffix(value.begin(), value.end()));
-
-        value = "ui64";
-        ASSERT_EQUALS(true, MathLib::isValidIntegerSuffix(value.begin(), value.end()));
+        ASSERT_EQUALS(true, MathLib::isValidIntegerSuffix("u"));
+        ASSERT_EQUALS(true, MathLib::isValidIntegerSuffix("ul"));
+        ASSERT_EQUALS(true, MathLib::isValidIntegerSuffix("ull"));
+        ASSERT_EQUALS(true, MathLib::isValidIntegerSuffix("l"));
+        ASSERT_EQUALS(true, MathLib::isValidIntegerSuffix("lu"));
+        ASSERT_EQUALS(true, MathLib::isValidIntegerSuffix("ll"));
+        ASSERT_EQUALS(true, MathLib::isValidIntegerSuffix("llu"));
+        ASSERT_EQUALS(true, MathLib::isValidIntegerSuffix("llU"));
+        ASSERT_EQUALS(true, MathLib::isValidIntegerSuffix("LLU"));
+        // Microsoft extensions:
+        ASSERT_EQUALS(true, MathLib::isValidIntegerSuffix("i64"));
+        ASSERT_EQUALS(true, MathLib::isValidIntegerSuffix("I64"));
+        ASSERT_EQUALS(true, MathLib::isValidIntegerSuffix("ui64"));
+        ASSERT_EQUALS(true, MathLib::isValidIntegerSuffix("UI64"));
+        ASSERT_EQUALS(false, MathLib::isValidIntegerSuffix("i64", false));
+        ASSERT_EQUALS(false, MathLib::isValidIntegerSuffix("I64", false));
+        ASSERT_EQUALS(false, MathLib::isValidIntegerSuffix("ui64", false));
+        ASSERT_EQUALS(false, MathLib::isValidIntegerSuffix("UI64", false));
     }
 
     void ispositive() const {
@@ -782,6 +766,7 @@ private:
         ASSERT_EQUALS(false, MathLib::isDecimalFloat("."));
         ASSERT_EQUALS(false, MathLib::isDecimalFloat("..."));
         ASSERT_EQUALS(false, MathLib::isDecimalFloat(".e"));
+        ASSERT_EQUALS(false, MathLib::isDecimalFloat(".e2"));
         ASSERT_EQUALS(false, MathLib::isDecimalFloat(".E"));
         ASSERT_EQUALS(false, MathLib::isDecimalFloat("+E."));
         ASSERT_EQUALS(false, MathLib::isDecimalFloat("+e."));
@@ -914,6 +899,7 @@ private:
         ASSERT_EQUALS(false, MathLib::isDec("-x"));
         ASSERT_EQUALS(false, MathLib::isDec("+x"));
         ASSERT_EQUALS(false, MathLib::isDec("x"));
+        ASSERT_EQUALS(false, MathLib::isDec(""));
     }
 
     void isNullValue() const {
@@ -1088,7 +1074,7 @@ private:
     void incdec() const {
         // increment
         {
-            MathLib::biguint num = ~10U;
+            const MathLib::biguint num = ~10U;
             const std::string op = "++";
             const std::string strNum = MathLib::incdec(MathLib::toString(num), op);
             const MathLib::biguint incrementedNum = MathLib::toULongNumber(strNum);
@@ -1096,7 +1082,7 @@ private:
         }
         // decrement
         {
-            MathLib::biguint num = ~10U;
+            const MathLib::biguint num = ~10U;
             const std::string op = "--";
             const std::string strNum = MathLib::incdec(MathLib::toString(num), op);
             const MathLib::biguint decrementedNum = MathLib::toULongNumber(strNum);

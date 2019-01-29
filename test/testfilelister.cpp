@@ -1,6 +1,6 @@
 /*
  * Cppcheck - A tool for static C/C++ code analysis
- * Copyright (C) 2007-2017 Cppcheck team.
+ * Copyright (C) 2007-2018 Cppcheck team.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -37,7 +37,7 @@ public:
     }
 
 private:
-    void run() override {
+    void run() OVERRIDE {
         // bail out if the tests are not executed from the base folder
         {
             std::ifstream fin("test/testfilelister.cpp");

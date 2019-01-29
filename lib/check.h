@@ -35,6 +35,10 @@ namespace tinyxml2 {
     class XMLElement;
 }
 
+namespace CTU {
+    class FileInfo;
+}
+
 /** Use WRONG_DATA in checkers to mark conditions that check that data is correct */
 #define WRONG_DATA(COND, TOK)  (wrongData((TOK), (COND), #COND))
 
@@ -52,11 +56,11 @@ public:
 
     /** This constructor is used when running checks. */
     Check(const std::string &aname, const Tokenizer *tokenizer, const Settings *settings, ErrorLogger *errorLogger)
-        : _tokenizer(tokenizer), _settings(settings), _errorLogger(errorLogger), _name(aname) {
+        : mTokenizer(tokenizer), mSettings(settings), mErrorLogger(errorLogger), mName(aname) {
     }
 
     virtual ~Check() {
-        if (!_tokenizer)
+        if (!mTokenizer)
             instances().remove(this);
     }
 
@@ -75,7 +79,7 @@ public:
 
     /** class name, used to generate documentation */
     const std::string& name() const {
-        return _name;
+        return mName;
     }
 
     /** get information about this class, used to generate documentation */
@@ -89,7 +93,7 @@ public:
     static void reportError(const ErrorLogger::ErrorMessage &errmsg);
 
     /** Base class used for whole-program analysis */
-    class FileInfo {
+    class CPPCHECKLIB FileInfo {
     public:
         FileInfo() {}
         virtual ~FileInfo() {}
@@ -110,7 +114,8 @@ public:
     }
 
     // Return true if an error is reported.
-    virtual bool analyseWholeProgram(const std::list<FileInfo*> &fileInfo, const Settings& settings, ErrorLogger &errorLogger) {
+    virtual bool analyseWholeProgram(const CTU::FileInfo *ctu, const std::list<FileInfo*> &fileInfo, const Settings& settings, ErrorLogger &errorLogger) {
+        (void)ctu;
         (void)fileInfo;
         (void)settings;
         (void)errorLogger;
@@ -118,9 +123,9 @@ public:
     }
 
 protected:
-    const Tokenizer * const _tokenizer;
-    const Settings * const _settings;
-    ErrorLogger * const _errorLogger;
+    const Tokenizer * const mTokenizer;
+    const Settings * const mSettings;
+    ErrorLogger * const mErrorLogger;
 
     /** report an error */
     template<typename T, typename U>
@@ -144,17 +149,17 @@ protected:
     /** report an error */
     template<typename T, typename U>
     void reportError(const std::list<const Token *> &callstack, Severity::SeverityType severity, const T id, const U msg, const CWE &cwe, bool inconclusive) {
-        const ErrorLogger::ErrorMessage errmsg(callstack, _tokenizer ? &_tokenizer->list : nullptr, severity, id, msg, cwe, inconclusive);
-        if (_errorLogger)
-            _errorLogger->reportErr(errmsg);
+        const ErrorLogger::ErrorMessage errmsg(callstack, mTokenizer ? &mTokenizer->list : nullptr, severity, id, msg, cwe, inconclusive);
+        if (mErrorLogger)
+            mErrorLogger->reportErr(errmsg);
         else
             reportError(errmsg);
     }
 
     void reportError(const ErrorPath &errorPath, Severity::SeverityType severity, const char id[], const std::string &msg, const CWE &cwe, bool inconclusive) {
-        const ErrorLogger::ErrorMessage errmsg(errorPath, _tokenizer ? &_tokenizer->list : nullptr, severity, id, msg, cwe, inconclusive);
-        if (_errorLogger)
-            _errorLogger->reportErr(errmsg);
+        const ErrorLogger::ErrorMessage errmsg(errorPath, mTokenizer ? &mTokenizer->list : nullptr, severity, id, msg, cwe, inconclusive);
+        if (mErrorLogger)
+            mErrorLogger->reportErr(errmsg);
         else
             reportError(errmsg);
     }
@@ -163,7 +168,7 @@ protected:
         ErrorPath errorPath;
         if (!value) {
             errorPath.emplace_back(errtok,bug);
-        } else if (_settings->verbose || _settings->xml || !_settings->templateLocation.empty()) {
+        } else if (mSettings->verbose || mSettings->xml || !mSettings->templateLocation.empty()) {
             errorPath = value->errorPath;
             errorPath.emplace_back(errtok,bug);
         } else {
@@ -182,7 +187,7 @@ protected:
      */
     bool wrongData(const Token *tok, bool condition, const char *str);
 private:
-    const std::string _name;
+    const std::string mName;
 
     /** disabled assignment operator and copy constructor */
     void operator=(const Check &) = delete;

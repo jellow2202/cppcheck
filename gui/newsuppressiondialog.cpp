@@ -38,8 +38,19 @@ Suppressions::Suppression NewSuppressionDialog::getSuppression() const
 {
     Suppressions::Suppression ret;
     ret.errorId = mUI->mComboErrorId->currentText().toStdString();
+    if (ret.errorId.empty())
+        ret.errorId = "*";
     ret.fileName = mUI->mTextFileName->text().toStdString();
     ret.lineNumber = mUI->mTextLineNumber->text().toInt();
     ret.symbolName = mUI->mTextSymbolName->text().toStdString();
     return ret;
+}
+
+void NewSuppressionDialog::setSuppression(const Suppressions::Suppression &suppression)
+{
+    setWindowTitle(tr("Edit suppression"));
+    mUI->mComboErrorId->setCurrentText(QString::fromStdString(suppression.errorId));
+    mUI->mTextFileName->setText(QString::fromStdString(suppression.fileName));
+    mUI->mTextLineNumber->setText(suppression.lineNumber > 0 ? QString::number(suppression.lineNumber) : QString());
+    mUI->mTextSymbolName->setText(QString::fromStdString(suppression.symbolName));
 }

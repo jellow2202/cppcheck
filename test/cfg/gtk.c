@@ -19,4 +19,23 @@ void validCode(int argInt)
     if G_LIKELY(argInt == 0) {
     } else if (G_LIKELY(argInt == -1)) {
     }
+
+    printf("%s", _("test"));
+    printf("%s", Q_("a|test"));
+    printf("%s", N_("test"));
+
+    gpointer gpt = g_malloc(4);
+    printf("%p", gpt);
+    g_free(gpt);
+}
+
+void g_malloc_test()
+{
+    // cppcheck-suppress leakReturnValNotUsed
+    g_malloc(8);
+
+    gpointer gpt = g_malloc(1);
+    printf("%p", gpt);
+
+    // cppcheck-suppress memleak
 }

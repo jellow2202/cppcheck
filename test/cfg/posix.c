@@ -12,12 +12,14 @@
 #include <dirent.h>
 #include <sys/mman.h>
 #include <sys/socket.h>
+#include <dlfcn.h>
 #include <fcntl.h>
 // unavailable on some linux systems #include <ndbm.h>
 #include <netdb.h>
 #include <regex.h>
 #include <time.h>
 #include <unistd.h>
+#include <pthread.h>
 
 void bufferAccessOutOfBounds(int fd)
 {
@@ -48,9 +50,13 @@ void bufferAccessOutOfBounds(int fd)
     readlinkat(1, "path", a, 5);
     // cppcheck-suppress bufferAccessOutOfBounds
     readlinkat(1, "path", a, 6);
+    // This is valid
+    gethostname(a, 5);
+    // cppcheck-suppress bufferAccessOutOfBounds
+    gethostname(a, 6);
 }
 
-void nullPointer(char *p, int fd)
+void nullPointer(char *p, int fd, pthread_mutex_t mutex)
 {
     // cppcheck-suppress ignoredReturnValue
     isatty(0);
@@ -84,6 +90,19 @@ void nullPointer(char *p, int fd)
     // cppcheck-suppress strtokCalled
     // cppcheck-suppress nullPointer
     strtok(p, NULL);
+
+    // cppcheck-suppress nullPointer
+    pthread_mutex_init(NULL, NULL);
+    // Second argument can be NULL
+    pthread_mutex_init(&mutex, NULL);
+    // cppcheck-suppress nullPointer
+    pthread_mutex_destroy(NULL);
+    // cppcheck-suppress nullPointer
+    pthread_mutex_lock(NULL);
+    // cppcheck-suppress nullPointer
+    pthread_mutex_trylock(NULL);
+    // cppcheck-suppress nullPointer
+    pthread_mutex_unlock(NULL);
 }
 
 void memleak_getaddrinfo()
@@ -203,6 +222,7 @@ void uninitvar(int fd)
     int decimal, sign;
     double d;
     void *p;
+    pthread_mutex_t mutex;
     // cppcheck-suppress uninitvar
     write(x,"ab",2);
     // TODO cppcheck-suppress uninitvar
@@ -255,6 +275,18 @@ void uninitvar(int fd)
     // cppcheck-suppress strtokCalled
     // cppcheck-suppress uninitvar
     strtok(strtok_arg1, ";");
+
+    // cppcheck-suppress uninitvar
+    pthread_mutex_lock(&mutex);
+    // cppcheck-suppress uninitvar
+    pthread_mutex_trylock(&mutex);
+    // cppcheck-suppress uninitvar
+    pthread_mutex_unlock(&mutex);
+    // after initialization it must be OK to call lock, trylock and unlock for this mutex
+    pthread_mutex_init(&mutex, NULL);
+    pthread_mutex_lock(&mutex);
+    pthread_mutex_trylock(&mutex);
+    pthread_mutex_unlock(&mutex);
 }
 
 void uninitvar_getcwd(void)
@@ -299,4 +331,22 @@ void timet_h(struct timespec* ptp1)
     char buf[26];
     // cppcheck-suppress ctime_rCalled
     ctime_r(&clock, buf);
+}
+
+void dl(const char* libname, const char* func)
+{
+    void* lib = dlopen(libname, RTLD_NOW);
+    // cppcheck-suppress resourceLeak
+    // cppcheck-suppress redundantAssignment
+    lib = dlopen(libname, RTLD_LAZY);
+    const char* funcname;
+    // cppcheck-suppress uninitvar
+    // cppcheck-suppress unreadVariable
+    void* sym = dlsym(lib, funcname);
+    // cppcheck-suppress ignoredReturnValue
+    dlsym(lib, "foo");
+    void* uninit;
+    // cppcheck-suppress uninitvar
+    dlclose(uninit);
+    // cppcheck-suppress resourceLeak
 }

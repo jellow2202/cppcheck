@@ -1,6 +1,6 @@
 /*
  * Cppcheck - A tool for static C/C++ code analysis
- * Copyright (C) 2007-2017 Cppcheck team.
+ * Copyright (C) 2007-2018 Cppcheck team.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -38,13 +38,13 @@ public:
         std::string errorId;
         void setFileName(const std::string &s);
         const std::string &getFileName() const {
-            return _fileName;
+            return mFileName;
         }
         int lineNumber;
         bool inconclusive;
         std::string symbolNames;
     private:
-        std::string _fileName;
+        std::string mFileName;
     };
 
     struct CPPCHECKLIB Suppression {
@@ -67,7 +67,7 @@ public:
             if (errorId != other.errorId)
                 return errorId < other.errorId;
             if (lineNumber < other.lineNumber)
-                return lineNumber < other.lineNumber;
+                return true;
             if (fileName != other.fileName)
                 return fileName < other.fileName;
             if (symbolName != other.symbolName)
@@ -98,7 +98,7 @@ public:
         std::string symbolName;
         bool matched;
 
-        static const int NO_LINE = 0;
+        enum { NO_LINE = -1 };
     };
 
     /**
@@ -125,9 +125,7 @@ public:
     /**
      * @brief Don't show this error. File and/or line are optional. In which case
      * the errorId alone is used for filtering.
-     * @param errorId the id for the error, e.g. "arrayIndexOutOfBounds"
-     * @param file File name with the path, e.g. "src/main.cpp"
-     * @param line number, e.g. "123"
+     * @param suppression suppression details
      * @return error message. empty upon success
      */
     std::string addSuppression(const Suppression &suppression);
@@ -167,7 +165,7 @@ public:
     static bool matchglob(const std::string &pattern, const std::string &name);
 private:
     /** @brief List of error which the user doesn't want to see. */
-    std::list<Suppression> _suppressions;
+    std::list<Suppression> mSuppressions;
 };
 
 /// @}

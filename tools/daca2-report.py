@@ -2,7 +2,7 @@
 import os
 import sys
 import re
-
+import subprocess
 
 def readdate(data):
     if data[:5] == 'DATE ':
@@ -45,6 +45,38 @@ def summaryHtml(style, font, severity, categories, totalNumber):
     ret = ret + '</tr>\n'
     return ret
 
+def diffResults(reportpath):
+    diff = ''
+    count_negatives = 0
+    count_positives = 0
+
+    f = open(reportpath + 'diff.txt', 'wt')
+
+    for lib in ['', 'lib']:
+        for a in "0123456789abcdefghijklmnopqrstuvwxyz":
+            baseFileName = daca2folder + lib + a + '/results-1.84.txt'
+            headFileName = daca2folder + lib + a + '/results-head.txt'
+            if not os.path.isfile(baseFileName):
+                continue
+            if not os.path.isfile(headFileName):
+                continue
+
+            print('diffResults:' + lib + a)
+
+            diffCmd = ['diff', baseFileName, headFileName]
+            p = subprocess.Popen(diffCmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            comm = p.communicate()
+
+            for line in comm[0].split('\n'):
+                if re.match(r'^> [a-z0-9].+', line):
+                    f.write('head: ' + line[2:] + '\n')
+                    count_positives += 1
+                elif re.match(r'^< [a-z0-9].+', line):
+                    f.write('1.84: ' + line[2:] + '\n')
+                    count_negatives += 1
+
+    return count_negatives, count_positives
+
 daca2folder = os.path.expanduser('~/daca2/')
 path = ''
 for arg in sys.argv[1:]:
@@ -56,6 +88,8 @@ for arg in sys.argv[1:]:
         path = arg
         if path[-1] != '/':
             path += '/'
+
+count_negatives, count_positives = diffResults(path)
 
 mainpage = open(path + 'daca2.html', 'wt')
 mainpage.write('<!DOCTYPE html>\n')
@@ -71,6 +105,9 @@ mainpage.write('<h1>DACA2</h1>\n')
 mainpage.write('<p>Results when running latest (git head) Cppcheck on Debian.</p>\n')
 mainpage.write('<p>For performance reasons the analysis is limited. Files larger than 1mb are skipped. ' +
                'If analysis of a file takes more than 10 minutes it may be stopped.</p>\n')
+
+mainpage.write('<p>Show <a href="diff.txt">diff</a> (1.84:' + str(count_negatives) + ', head:' + str(count_positives) + ')</p>\n')
+
 mainpage.write('<table class="sortable">\n')
 mainpage.write(
     '<tr>' +
@@ -95,14 +132,14 @@ for severity in ['error', 'warning', 'style', 'portability', 'performance']:
 
 daca2 = daca2folder
 pattern = re.compile(r'.*: (error|warning|style|performance|portability):.* \[([a-zA-Z0-9_\\-]+)\]')
-for lib in (False, True):
+for lib in [False, True]:
     for a in "0123456789abcdefghijklmnopqrstuvwxyz":
         if lib:
             a = "lib" + a
-        if not os.path.isfile(daca2 + a + '/results.txt'):
+        if not os.path.isfile(daca2 + a + '/results-head.txt'):
             continue
 
-        f = open(daca2 + a + '/results.txt', 'rt')
+        f = open(daca2 + a + '/results-head.txt', 'rt')
         data = f.read()
         f.close()
 

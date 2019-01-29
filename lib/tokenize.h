@@ -35,6 +35,7 @@ class Settings;
 class SymbolDatabase;
 class TimerResults;
 class Token;
+class TemplateSimplifier;
 
 namespace simplecpp {
     class TokenList;
@@ -50,13 +51,15 @@ class CPPCHECKLIB Tokenizer {
     friend class TestSimplifyTypedef;
     friend class TestTokenizer;
     friend class SymbolDatabase;
+    friend class TestSimplifyTemplate;
+    friend class TemplateSimplifier;
 
     /** Class used in Tokenizer::setVarIdPass1 */
     class VariableMap {
     private:
-        std::map<std::string, unsigned int> variableId;
-        std::stack<std::list<std::pair<std::string, unsigned int> > > scopeInfo;
-        mutable unsigned int varId;
+        std::map<std::string, unsigned int> mVariableId;
+        std::stack<std::list<std::pair<std::string, unsigned int> > > mScopeInfo;
+        mutable unsigned int mVarId;
     public:
         VariableMap();
         void enterScope();
@@ -64,16 +67,16 @@ class CPPCHECKLIB Tokenizer {
         void addVariable(const std::string &varname);
         bool hasVariable(const std::string &varname) const;
         std::map<std::string, unsigned int>::const_iterator find(const std::string &varname) const {
-            return variableId.find(varname);
+            return mVariableId.find(varname);
         }
         std::map<std::string, unsigned int>::const_iterator end() const {
-            return variableId.end();
+            return mVariableId.end();
         }
         const std::map<std::string, unsigned int> &map() const {
-            return variableId;
+            return mVariableId;
         }
         unsigned int *getVarId() const {
-            return &varId;
+            return &mVarId;
         }
     };
 
@@ -84,7 +87,7 @@ public:
     ~Tokenizer();
 
     void setTimerResults(TimerResults *tr) {
-        _timerResults = tr;
+        mTimerResults = tr;
     }
 
     /** Is the code C. Used for bailouts */
@@ -591,11 +594,14 @@ public:
     /** Syntax error */
     void syntaxError(const Token *tok) const;
 
-    /** Syntax error. Example: invalid number of ')' */
-    void syntaxError(const Token *tok, char c) const;
+    /** Syntax error. Unmatched character. */
+    void unmatchedToken(const Token *tok) const;
 
     /** Syntax error. C++ code in C file. */
     void syntaxErrorC(const Token *tok, const std::string &what) const;
+
+    /** Warn about unknown macro(s), configuration is recommended */
+    void unknownMacroError(const Token *tok1) const;
 
 private:
 
@@ -634,7 +640,7 @@ private:
     void simplifyCallingConvention();
 
     /**
-     * Remove __attribute__ ((?))
+     * Remove \__attribute\__ ((?))
      */
     void simplifyAttribute();
 
@@ -652,6 +658,11 @@ private:
      * asm heuristics, Put ^{} statements in asm()
      */
     void simplifyAsm2();
+
+    /**
+     * Simplify \@&hellip;  (compiler extension)
+     */
+    void simplifyAt();
 
     /**
      * Simplify bitfields - the field width is removed as we don't use it.
@@ -764,17 +775,17 @@ public:
 
     /** Was there templates in the code? */
     bool codeWithTemplates() const {
-        return _codeWithTemplates;
+        return mCodeWithTemplates;
     }
 
 
     void setSettings(const Settings *settings) {
-        _settings = settings;
+        mSettings = settings;
         list.setSettings(settings);
     }
 
     const SymbolDatabase *getSymbolDatabase() const {
-        return _symbolDatabase;
+        return mSymbolDatabase;
     }
     void createSymbolDatabase();
     void deleteSymbolDatabase();
@@ -795,7 +806,7 @@ public:
      * @return number of variables
      */
     unsigned int varIdCount() const {
-        return _varId;
+        return mVarId;
     }
 
     /**
@@ -838,7 +849,7 @@ public:
 
 #ifdef MAXTIME
     bool isMaxTime() const {
-        return (std::time(0) > maxtime);
+        return (std::time(0) > mMaxTime);
 #else
     static bool isMaxTime() {
         return false;
@@ -859,48 +870,50 @@ private:
     * @return new variable id
     */
     unsigned int newVarId() {
-        return ++_varId;
+        return ++mVarId;
     }
 
     /** Set pod types */
     void setPodTypes();
 
     /** settings */
-    const Settings * _settings;
+    const Settings * mSettings;
 
     /** errorlogger */
-    ErrorLogger* const _errorLogger;
+    ErrorLogger* const mErrorLogger;
 
     /** Symbol database that all checks etc can use */
-    SymbolDatabase *_symbolDatabase;
+    SymbolDatabase *mSymbolDatabase;
+
+    TemplateSimplifier *mTemplateSimplifier;
 
     /** E.g. "A" for code where "#ifdef A" is true. This is used to
         print additional information in error situations. */
-    std::string _configuration;
+    std::string mConfiguration;
 
     /** sizeof information for known types */
-    std::map<std::string, unsigned int> _typeSize;
+    std::map<std::string, unsigned int> mTypeSize;
 
     /** variable count */
-    unsigned int _varId;
+    unsigned int mVarId;
 
-    /** unnamed count "Unnamed0", "Unnamed1", "Unnamed2", .. */
-    unsigned int _unnamedCount;
+    /** unnamed count "Unnamed0", "Unnamed1", "Unnamed2", ... */
+    unsigned int mUnnamedCount;
 
     /**
      * was there any templates? templates that are "unused" are
      * removed from the token list
      */
-    bool _codeWithTemplates;
+    bool mCodeWithTemplates;
 
     /**
      * TimerResults
      */
-    TimerResults *_timerResults;
+    TimerResults *mTimerResults;
 
 #ifdef MAXTIME
     /** Tokenizer maxtime */
-    std::time_t maxtime;
+    const std::time_t mMaxTime;
 #endif
 };
 

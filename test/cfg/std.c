@@ -32,27 +32,27 @@ void bufferAccessOutOfBounds(void)
     fgets(a,6,stdin);
     sprintf(a, "ab%s", "cd");
     // cppcheck-suppress bufferAccessOutOfBounds
-    // cppcheck-suppress redundantCopy
+    // TODO cppcheck-suppress redundantCopy
     sprintf(a, "ab%s", "cde");
-    // cppcheck-suppress redundantCopy
+    // TODO cppcheck-suppress redundantCopy
     snprintf(a, 5, "abcde%i", 1);
-    // cppcheck-suppress redundantCopy
+    // TODO cppcheck-suppress redundantCopy
     // cppcheck-suppress bufferAccessOutOfBounds
     snprintf(a, 6, "abcde%i", 1);
-    // cppcheck-suppress redundantCopy
+    // TODO cppcheck-suppress redundantCopy
     strcpy(a,"abcd");
     // cppcheck-suppress bufferAccessOutOfBounds
-    // cppcheck-suppress redundantCopy
+    // TODO cppcheck-suppress redundantCopy
     strcpy(a, "abcde");
-    // cppcheck-suppress redundantCopy
+    // TODO cppcheck-suppress redundantCopy
     strncpy(a,"abcde",5);
     // cppcheck-suppress bufferAccessOutOfBounds
-    // cppcheck-suppress redundantCopy
+    // TODO cppcheck-suppress redundantCopy
     strncpy(a,"abcde",6);
     // cppcheck-suppress bufferAccessOutOfBounds
-    // cppcheck-suppress redundantCopy
+    // TODO cppcheck-suppress redundantCopy
     strncpy(a,"a",6);
-    // cppcheck-suppress redundantCopy
+    // TODO cppcheck-suppress redundantCopy
     strncpy(a,"abcdefgh",4);
     // valid call
     strncpy_s(a,5,"abcd",5);
@@ -118,11 +118,9 @@ void nullpointer(int value)
     fp = 0;
     // No FP
     fflush(0);
-    // No FP
-    // cppcheck-suppress redundantAssignment
     fp = freopen(0,"abc",stdin);
     fclose(fp);
-    fp = 0;
+    fp = NULL;
     // cppcheck-suppress nullPointer
     fputc(0,0);
     // cppcheck-suppress nullPointer
@@ -249,22 +247,22 @@ void nullpointer(int value)
 
 void nullpointerMemchr1(char *p, char *s)
 {
-    // cppcheck-suppress uselessAssignmentPtrArg
     p = memchr(s, 'p', strlen(s));
+    (void)p;
 }
 
 void nullpointerMemchr2(char *p, char *s)
 {
-    // cppcheck-suppress uselessAssignmentPtrArg
     p = memchr(s, 0, strlen(s));
+    (void)p;
 }
 
 void nullPointer_memchr(char *p)
 {
     char *s = 0;
     // cppcheck-suppress nullPointer
-    // cppcheck-suppress uselessAssignmentPtrArg
     p = memchr(s, 0, strlen(s));
+    (void)p;
 }
 
 void nullPointer_memcmp(char *p)
@@ -2901,6 +2899,19 @@ void uninitvar_strchr(void)
     (void)strchr(cs,c);
 }
 
+void invalidFunctionArg_strchr(char *cs, int c)
+{
+    // cppcheck-suppress invalidFunctionArg
+    (void)strchr(cs,-1);
+
+    // No warning shall be issued for
+    (void)strchr(cs, 0);
+    (void)strchr(cs, 255);
+
+    // cppcheck-suppress invalidFunctionArg
+    (void)strchr(cs, 256);
+}
+
 void uninitvar_wcschr(void)
 {
     wchar_t *cs;
@@ -3516,7 +3527,7 @@ void uninitvar_snprintf(char *S, size_t N, char *Format, int Int)
     (void)snprintf(S,N,format,Int); // format is uninitialized
     // cppcheck-suppress uninitvar
     (void)snprintf(S,N,Format,i); // i is uninitialized
-    // TODO cppcheck-suppress uninitvar
+    // cppcheck-suppress uninitvar
     (void)snprintf(s,N,Format,Int);
 
     // no warning is expected for
@@ -3795,6 +3806,24 @@ void invalidFunctionArg(char c)
     (void)toupper(c);
     (void)toupper(0);
     (void)toupper(255);
+}
+
+void invalidFunctionArgString(char c)
+{
+    /* cppcheck-suppress invalidFunctionArgStr */
+    (void)atoi(&c);
+    char x = 'x';
+    /* cppcheck-suppress invalidFunctionArgStr */
+    (void)strlen(&x);
+
+    char y = '\0';
+    (void)strlen(&y);
+
+    // #5225
+    char str[80] = "hello worl";
+    char d='d';
+    /* cppcheck-suppress invalidFunctionArgStr */
+    (void)strcat(str,&d);
 }
 
 void ignoredReturnValue_abs(int i)

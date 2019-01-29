@@ -1,6 +1,6 @@
 /*
  * Cppcheck - A tool for static C/C++ code analysis
- * Copyright (C) 2007-2017 Cppcheck team.
+ * Copyright (C) 2007-2018 Cppcheck team.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -50,7 +50,7 @@ public:
     }
 
     /** @brief Run checks against the normal token list */
-    void runChecks(const Tokenizer *tokenizer, const Settings *settings, ErrorLogger *errorLogger) override {
+    void runChecks(const Tokenizer *tokenizer, const Settings *settings, ErrorLogger *errorLogger) OVERRIDE {
         CheckBool checkBool(tokenizer, settings, errorLogger);
 
         // Checks
@@ -58,10 +58,11 @@ public:
         checkBool.checkComparisonOfBoolWithInt();
         checkBool.checkAssignBoolToFloat();
         checkBool.pointerArithBool();
+        checkBool.returnValueOfFunctionReturningBool();
     }
 
     /** @brief Run checks against the simplified token list */
-    void runSimplifiedChecks(const Tokenizer *tokenizer, const Settings *settings, ErrorLogger *errorLogger) override {
+    void runSimplifiedChecks(const Tokenizer *tokenizer, const Settings *settings, ErrorLogger *errorLogger) OVERRIDE {
         CheckBool checkBool(tokenizer, settings, errorLogger);
 
         // Checks
@@ -100,6 +101,9 @@ public:
     void pointerArithBool();
     void pointerArithBoolCond(const Token *tok);
 
+    /** @brief %Check if a function returning bool returns an integer other than 0 or 1 */
+    void returnValueOfFunctionReturningBool();
+
 private:
     // Error messages..
     void comparisonOfFuncReturningBoolError(const Token *tok, const std::string &expression);
@@ -112,8 +116,9 @@ private:
     void bitwiseOnBooleanError(const Token *tok, const std::string &varname, const std::string &op);
     void comparisonOfBoolExpressionWithIntError(const Token *tok, bool n0o1);
     void pointerArithBoolError(const Token *tok);
+    void returnValueBoolError(const Token *tok);
 
-    void getErrorMessages(ErrorLogger *errorLogger, const Settings *settings) const override {
+    void getErrorMessages(ErrorLogger *errorLogger, const Settings *settings) const OVERRIDE {
         CheckBool c(nullptr, settings, errorLogger);
 
         c.assignBoolToPointerError(nullptr);
@@ -125,13 +130,15 @@ private:
         c.bitwiseOnBooleanError(nullptr, "varname", "&&");
         c.comparisonOfBoolExpressionWithIntError(nullptr, true);
         c.pointerArithBoolError(nullptr);
+        c.comparisonOfBoolWithInvalidComparator(nullptr, "expression");
+        c.returnValueBoolError(nullptr);
     }
 
     static std::string myName() {
         return "Boolean";
     }
 
-    std::string classInfo() const override {
+    std::string classInfo() const OVERRIDE {
         return "Boolean type checks\n"
                "- using increment on boolean\n"
                "- comparison of a boolean expression with an integer other than 0 or 1\n"
@@ -139,7 +146,8 @@ private:
                "- comparison of a boolean value with boolean value using relational operator\n"
                "- using bool in bitwise expression\n"
                "- pointer addition in condition (either dereference is forgot or pointer overflow is required to make the condition false)\n"
-               "- Assigning bool value to pointer or float\n";
+               "- Assigning bool value to pointer or float\n"
+               "- Returning an integer other than 0 or 1 from a function with boolean return value\n";
     }
 };
 /// @}

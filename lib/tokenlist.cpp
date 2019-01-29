@@ -38,10 +38,10 @@ static const unsigned int AST_MAX_DEPTH = 50U;
 
 
 TokenList::TokenList(const Settings* settings) :
-    _tokensFrontBack(),
-    _settings(settings),
-    _isC(false),
-    _isCPP(false)
+    mTokensFrontBack(),
+    mSettings(settings),
+    mIsC(false),
+    mIsCpp(false)
 {
 }
 
@@ -65,33 +65,33 @@ const std::string& TokenList::getSourceFilePath() const
 // Deallocate lists..
 void TokenList::deallocateTokens()
 {
-    deleteTokens(_tokensFrontBack.front);
-    _tokensFrontBack.front = nullptr;
-    _tokensFrontBack.back = nullptr;
-    _files.clear();
+    deleteTokens(mTokensFrontBack.front);
+    mTokensFrontBack.front = nullptr;
+    mTokensFrontBack.back = nullptr;
+    mFiles.clear();
 }
 
 unsigned int TokenList::appendFileIfNew(const std::string &fileName)
 {
     // Has this file been tokenized already?
-    for (std::size_t i = 0; i < _files.size(); ++i)
-        if (Path::sameFileName(_files[i], fileName))
+    for (std::size_t i = 0; i < mFiles.size(); ++i)
+        if (Path::sameFileName(mFiles[i], fileName))
             return (unsigned int)i;
 
-    // The "_files" vector remembers what files have been tokenized..
-    _files.push_back(Path::simplifyPath(fileName));
+    // The "mFiles" vector remembers what files have been tokenized..
+    mFiles.push_back(fileName);
 
-    // Update _isC and _isCPP properties
-    if (_files.size() == 1) { // Update only useful if first file added to _files
-        if (!_settings) {
-            _isC = Path::isC(getSourceFilePath());
-            _isCPP = Path::isCPP(getSourceFilePath());
+    // Update mIsC and mIsCpp properties
+    if (mFiles.size() == 1) { // Update only useful if first file added to _files
+        if (!mSettings) {
+            mIsC = Path::isC(getSourceFilePath());
+            mIsCpp = Path::isCPP(getSourceFilePath());
         } else {
-            _isC = _settings->enforcedLang == Settings::C || (_settings->enforcedLang == Settings::None && Path::isC(getSourceFilePath()));
-            _isCPP = _settings->enforcedLang == Settings::CPP || (_settings->enforcedLang == Settings::None && Path::isCPP(getSourceFilePath()));
+            mIsC = mSettings->enforcedLang == Settings::C || (mSettings->enforcedLang == Settings::None && Path::isC(getSourceFilePath()));
+            mIsCpp = mSettings->enforcedLang == Settings::CPP || (mSettings->enforcedLang == Settings::None && Path::isCPP(getSourceFilePath()));
         }
     }
-    return _files.size() - 1U;
+    return mFiles.size() - 1U;
 }
 
 void TokenList::deleteTokens(Token *tok)
@@ -133,7 +133,7 @@ void TokenList::addtoken(std::string str, const unsigned int lineno, const unsig
         // TODO: It would be better if TokenList didn't simplify hexadecimal numbers
         std::string suffix;
         if (isHex &&
-            str.size() == (2 + _settings->int_bit / 4) &&
+            str.size() == (2 + mSettings->int_bit / 4) &&
             (str[2] >= '8') &&  // includes A-F and a-f
             MathLib::getSuffix(str).empty()
            )
@@ -141,18 +141,18 @@ void TokenList::addtoken(std::string str, const unsigned int lineno, const unsig
         str = MathLib::value(str).str() + suffix;
     }
 
-    if (_tokensFrontBack.back) {
-        _tokensFrontBack.back->insertToken(str);
+    if (mTokensFrontBack.back) {
+        mTokensFrontBack.back->insertToken(str);
     } else {
-        _tokensFrontBack.front = new Token(&_tokensFrontBack);
-        _tokensFrontBack.back = _tokensFrontBack.front;
-        _tokensFrontBack.back->str(str);
+        mTokensFrontBack.front = new Token(&mTokensFrontBack);
+        mTokensFrontBack.back = mTokensFrontBack.front;
+        mTokensFrontBack.back->str(str);
     }
 
     if (isCPP() && str == "delete")
-        _tokensFrontBack.back->isKeyword(true);
-    _tokensFrontBack.back->linenr(lineno);
-    _tokensFrontBack.back->fileIndex(fileno);
+        mTokensFrontBack.back->isKeyword(true);
+    mTokensFrontBack.back->linenr(lineno);
+    mTokensFrontBack.back->fileIndex(fileno);
 }
 
 void TokenList::addtoken(const Token * tok, const unsigned int lineno, const unsigned int fileno)
@@ -160,19 +160,19 @@ void TokenList::addtoken(const Token * tok, const unsigned int lineno, const uns
     if (tok == nullptr)
         return;
 
-    if (_tokensFrontBack.back) {
-        _tokensFrontBack.back->insertToken(tok->str(), tok->originalName());
+    if (mTokensFrontBack.back) {
+        mTokensFrontBack.back->insertToken(tok->str(), tok->originalName());
     } else {
-        _tokensFrontBack.front = new Token(&_tokensFrontBack);
-        _tokensFrontBack.back = _tokensFrontBack.front;
-        _tokensFrontBack.back->str(tok->str());
+        mTokensFrontBack.front = new Token(&mTokensFrontBack);
+        mTokensFrontBack.back = mTokensFrontBack.front;
+        mTokensFrontBack.back->str(tok->str());
         if (!tok->originalName().empty())
-            _tokensFrontBack.back->originalName(tok->originalName());
+            mTokensFrontBack.back->originalName(tok->originalName());
     }
 
-    _tokensFrontBack.back->linenr(lineno);
-    _tokensFrontBack.back->fileIndex(fileno);
-    _tokensFrontBack.back->flags(tok->flags());
+    mTokensFrontBack.back->linenr(lineno);
+    mTokensFrontBack.back->fileIndex(fileno);
+    mTokensFrontBack.back->flags(tok->flags());
 }
 
 
@@ -254,7 +254,7 @@ bool TokenList::createTokens(std::istream &code, const std::string& file0)
     appendFileIfNew(file0);
 
     simplecpp::OutputList outputList;
-    simplecpp::TokenList tokens(code, _files, file0, &outputList);
+    simplecpp::TokenList tokens(code, mFiles, file0, &outputList);
 
     createTokens(&tokens);
 
@@ -266,18 +266,18 @@ bool TokenList::createTokens(std::istream &code, const std::string& file0)
 void TokenList::createTokens(const simplecpp::TokenList *tokenList)
 {
     if (tokenList->cfront())
-        _files = tokenList->cfront()->location.files;
+        mOrigFiles = mFiles = tokenList->cfront()->location.files;
     else
-        _files.clear();
+        mFiles.clear();
 
-    _isC = _isCPP = false;
-    if (!_files.empty()) {
-        _isC = Path::isC(getSourceFilePath());
-        _isCPP = Path::isCPP(getSourceFilePath());
+    mIsC = mIsCpp = false;
+    if (!mFiles.empty()) {
+        mIsC = Path::isC(getSourceFilePath());
+        mIsCpp = Path::isCPP(getSourceFilePath());
     }
-    if (_settings && _settings->enforcedLang != Settings::None) {
-        _isC = (_settings->enforcedLang == Settings::C);
-        _isCPP = (_settings->enforcedLang == Settings::CPP);
+    if (mSettings && mSettings->enforcedLang != Settings::None) {
+        mIsC = (mSettings->enforcedLang == Settings::C);
+        mIsCpp = (mSettings->enforcedLang == Settings::CPP);
     }
 
     for (const simplecpp::Token *tok = tokenList->cfront(); tok; tok = tok->next) {
@@ -291,8 +291,8 @@ void TokenList::createTokens(const simplecpp::TokenList *tokenList)
             // TODO: It would be better if TokenList didn't simplify hexadecimal numbers
             std::string suffix;
             if (isHex &&
-                _settings &&
-                str.size() == (2 + _settings->int_bit / 4) &&
+                mSettings &&
+                str.size() == (2 + mSettings->int_bit / 4) &&
                 (str[2] >= '8') &&  // includes A-F and a-f
                 MathLib::getSuffix(str).empty()
                )
@@ -304,28 +304,28 @@ void TokenList::createTokens(const simplecpp::TokenList *tokenList)
         if (str.size() > 1 && str[0] == '.' && std::isdigit(str[1]))
             str = '0' + str;
 
-        if (_tokensFrontBack.back) {
-            _tokensFrontBack.back->insertToken(str);
+        if (mTokensFrontBack.back) {
+            mTokensFrontBack.back->insertToken(str);
         } else {
-            _tokensFrontBack.front = new Token(&_tokensFrontBack);
-            _tokensFrontBack.back = _tokensFrontBack.front;
-            _tokensFrontBack.back->str(str);
+            mTokensFrontBack.front = new Token(&mTokensFrontBack);
+            mTokensFrontBack.back = mTokensFrontBack.front;
+            mTokensFrontBack.back->str(str);
         }
 
-        if (isCPP() && _tokensFrontBack.back->str() == "delete")
-            _tokensFrontBack.back->isKeyword(true);
-        _tokensFrontBack.back->fileIndex(tok->location.fileIndex);
-        _tokensFrontBack.back->linenr(tok->location.line);
-        _tokensFrontBack.back->col(tok->location.col);
-        _tokensFrontBack.back->isExpandedMacro(!tok->macro.empty());
+        if (isCPP() && mTokensFrontBack.back->str() == "delete")
+            mTokensFrontBack.back->isKeyword(true);
+        mTokensFrontBack.back->fileIndex(tok->location.fileIndex);
+        mTokensFrontBack.back->linenr(tok->location.line);
+        mTokensFrontBack.back->col(tok->location.col);
+        mTokensFrontBack.back->isExpandedMacro(!tok->macro.empty());
     }
 
-    if (_settings && _settings->relativePaths) {
-        for (std::size_t i = 0; i < _files.size(); i++)
-            _files[i] = Path::getRelativePath(_files[i], _settings->basePaths);
+    if (mSettings && mSettings->relativePaths) {
+        for (std::size_t i = 0; i < mFiles.size(); i++)
+            mFiles[i] = Path::getRelativePath(mFiles[i], mSettings->basePaths);
     }
 
-    Token::assignProgressValues(_tokensFrontBack.front);
+    Token::assignProgressValues(mTokensFrontBack.front);
 }
 
 //---------------------------------------------------------------------------
@@ -362,7 +362,7 @@ struct AST_state {
     unsigned int inArrayAssignment;
     bool cpp;
     unsigned int assign;
-    bool inCase;
+    bool inCase; // true from case to :
     explicit AST_state(bool cpp_) : depth(0), inArrayAssignment(0), cpp(cpp_), assign(0U), inCase(false) {}
 };
 
@@ -391,6 +391,9 @@ static bool iscast(const Token *tok)
     if (!Token::Match(tok, "( ::| %name%"))
         return false;
 
+    if (Token::simpleMatch(tok->link(), ") ( )"))
+        return false;
+
     if (tok->previous() && tok->previous()->isName() && tok->previous()->str() != "return")
         return false;
 
@@ -411,10 +414,15 @@ static bool iscast(const Token *tok)
 
     bool type = false;
     for (const Token *tok2 = tok->next(); tok2; tok2 = tok2->next()) {
+        if (tok2->varId() != 0)
+            return false;
+
         while (tok2->link() && Token::Match(tok2, "(|[|<"))
             tok2 = tok2->link()->next();
 
         if (tok2->str() == ")") {
+            if (Token::simpleMatch(tok2, ") (") && Token::simpleMatch(tok2->linkAt(1), ") ."))
+                return true;
             return type || tok2->strAt(-1) == "*" || Token::simpleMatch(tok2, ") ~") ||
                    (Token::Match(tok2, ") %any%") &&
                     !tok2->next()->isOp() &&
@@ -560,8 +568,10 @@ static void compileTerm(Token *&tok, AST_state& state)
                 state.inCase = true;
             compileUnaryOp(tok, state, compileExpression);
             state.op.pop();
-            if (state.inCase && Token::simpleMatch(tok, ": ;"))
+            if (state.inCase && Token::simpleMatch(tok, ": ;")) {
+                state.inCase = false;
                 tok = tok->next();
+            }
         } else if (Token::Match(tok, "sizeof !!(")) {
             compileUnaryOp(tok, state, compileExpression);
             state.op.pop();
@@ -581,6 +591,8 @@ static void compileTerm(Token *&tok, AST_state& state)
             state.op.push(tok);
             if (Token::Match(tok, "%name% <") && tok->linkAt(1))
                 tok = tok->linkAt(1);
+            else if (Token::Match(tok, "%name% . . ."))
+                tok = tok->tokAt(3);
             tok = tok->next();
             if (Token::Match(tok, "%str%")) {
                 while (Token::Match(tok, "%name%|%str%"))
@@ -647,6 +659,9 @@ static bool isPrefixUnary(const Token* tok, bool cpp)
             && (tok->previous()->tokType() != Token::eIncDecOp || tok->tokType() == Token::eIncDecOp)))
         return true;
 
+    if (tok->str() == "*" && tok->previous()->tokType() == Token::eIncDecOp && isPrefixUnary(tok->previous(), cpp))
+        return true;
+
     return tok->strAt(-1) == ")" && iscast(tok->linkAt(-1));
 }
 
@@ -674,8 +689,12 @@ static void compilePrecedence2(Token *&tok, AST_state& state)
                 if (Token::simpleMatch(squareBracket->link(), "] (")) {
                     Token* const roundBracket = squareBracket->link()->next();
                     Token* curlyBracket = roundBracket->link()->next();
-                    while (Token::Match(curlyBracket, "%name%|.|::|&"))
+                    if (Token::Match(curlyBracket, "mutable|const"))
                         curlyBracket = curlyBracket->next();
+                    if (curlyBracket && curlyBracket->originalName() == "->") {
+                        while (Token::Match(curlyBracket, "%name%|.|::|&|*"))
+                            curlyBracket = curlyBracket->next();
+                    }
                     if (curlyBracket && curlyBracket->str() == "{") {
                         squareBracket->astOperand1(roundBracket);
                         roundBracket->astOperand1(curlyBracket);
@@ -692,7 +711,7 @@ static void compilePrecedence2(Token *&tok, AST_state& state)
                 }
             }
 
-            Token* tok2 = tok;
+            const Token* const tok2 = tok;
             if (tok->strAt(1) != "]")
                 compileBinOp(tok, state, compileExpression);
             else
@@ -745,10 +764,10 @@ static void compilePrecedence3(Token *&tok, AST_state& state)
             }
             compileUnaryOp(tok, state, compilePrecedence3);
         } else if (tok->str() == "(" && iscast(tok)) {
-            Token* tok2 = tok;
+            Token* castTok = tok;
             tok = tok->link()->next();
             compilePrecedence3(tok, state);
-            compileUnaryOp(tok2, state, nullptr);
+            compileUnaryOp(castTok, state, nullptr);
         } else if (state.cpp && Token::Match(tok, "new %name%|::|(")) {
             Token* newtok = tok;
             tok = tok->next();
@@ -950,8 +969,11 @@ static void compileAssignTernary(Token *&tok, AST_state& state)
             compileBinOp(tok, state, compileAssignTernary);
             state.assign = assign;
         } else if (tok->str() == ":") {
-            if (state.depth == 1U && state.inCase)
+            if (state.depth == 1U && state.inCase) {
+                state.inCase = false;
+                tok = tok->next();
                 break;
+            }
             if (state.assign > 0U)
                 break;
             compileBinOp(tok, state, compileAssignTernary);
@@ -1149,7 +1171,7 @@ static Token * createAstAtToken(Token *tok, bool cpp)
         Token * const tok1 = tok;
         AST_state state(cpp);
         compileExpression(tok, state);
-        Token * const endToken = tok;
+        const Token * const endToken = tok;
         if (endToken == tok1 || !endToken)
             return tok1;
 
@@ -1163,7 +1185,7 @@ static Token * createAstAtToken(Token *tok, bool cpp)
 
 void TokenList::createAst()
 {
-    for (Token *tok = _tokensFrontBack.front; tok; tok = tok ? tok->next() : nullptr) {
+    for (Token *tok = mTokensFrontBack.front; tok; tok = tok ? tok->next() : nullptr) {
         tok = createAstAtToken(tok, isCPP());
     }
 }
@@ -1172,7 +1194,7 @@ void TokenList::validateAst() const
 {
     // Check for some known issues in AST to avoid crash/hang later on
     std::set < const Token* > safeAstTokens; // list of "safe" AST tokens without endless recursion
-    for (const Token *tok = _tokensFrontBack.front; tok; tok = tok->next()) {
+    for (const Token *tok = mTokensFrontBack.front; tok; tok = tok->next()) {
         // Syntax error if binary operator only has 1 operand
         if ((tok->isAssignmentOp() || tok->isComparisonOp() || Token::Match(tok,"[|^/%]")) && tok->astOperand1() && !tok->astOperand2())
             throw InternalError(tok, "Syntax Error: AST broken, binary operator has only one operand.", InternalError::AST);
@@ -1199,12 +1221,44 @@ void TokenList::validateAst() const
         } else {
             safeAstTokens.insert(tok);
         }
+
+        // Check binary operators
+        if (Token::Match(tok, "%or%|%oror%|%assign%|%comp%")) {
+            // Skip lambda captures
+            if (Token::Match(tok, "= ,|]"))
+                continue;
+            // Don't check templates
+            if (tok->link())
+                continue;
+            // Skip pure virtual functions
+            if (Token::simpleMatch(tok->previous(), ") = 0"))
+                continue;
+            // Skip operator definitions
+            if (Token::simpleMatch(tok->previous(), "operator"))
+                continue;
+            // Skip incomplete code
+            if (!tok->astOperand1() && !tok->astOperand2() && !tok->astParent())
+                continue;
+            // Skip lambda assignment and/or initializer
+            if (Token::Match(tok, "= {|^|["))
+                continue;
+            // FIXME: Workaround broken AST assignment in type aliases
+            if (Token::Match(tok->previous(), "%name% = %name%"))
+                continue;
+            if (!tok->astOperand1() || !tok->astOperand2())
+                throw InternalError(tok, "Syntax Error: AST broken, binary operator '" + tok->str() + "' doesn't have two operands.", InternalError::AST);
+        }
     }
+}
+
+std::string TokenList::getOrigFile(const Token *tok) const
+{
+    return mOrigFiles.at(tok->fileIndex());
 }
 
 const std::string& TokenList::file(const Token *tok) const
 {
-    return _files.at(tok->fileIndex());
+    return mFiles.at(tok->fileIndex());
 }
 
 std::string TokenList::fileLine(const Token *tok) const
@@ -1216,7 +1270,7 @@ bool TokenList::validateToken(const Token* tok) const
 {
     if (!tok)
         return true;
-    for (const Token *t = _tokensFrontBack.front; t; t = t->next()) {
+    for (const Token *t = mTokensFrontBack.front; t; t = t->next()) {
         if (tok==t)
             return true;
     }
@@ -1226,7 +1280,7 @@ bool TokenList::validateToken(const Token* tok) const
 void TokenList::simplifyStdType()
 {
     for (Token *tok = front(); tok; tok = tok->next()) {
-        if (Token::Match(tok, "char|short|int|long|unsigned|signed|double|float") || (_settings->standards.c >= Standards::C99 && Token::Match(tok, "complex|_Complex"))) {
+        if (Token::Match(tok, "char|short|int|long|unsigned|signed|double|float") || (mSettings->standards.c >= Standards::C99 && Token::Match(tok, "complex|_Complex"))) {
             bool isFloat= false;
             bool isSigned = false;
             bool isUnsigned = false;
@@ -1249,7 +1303,7 @@ void TokenList::simplifyStdType()
                 else if (Token::Match(tok2, "float|double")) {
                     isFloat = true;
                     typeSpec = tok2;
-                } else if (_settings->standards.c >= Standards::C99 && Token::Match(tok2, "complex|_Complex"))
+                } else if (mSettings->standards.c >= Standards::C99 && Token::Match(tok2, "complex|_Complex"))
                     isComplex = !isFloat || tok2->str() == "_Complex" || Token::Match(tok2->next(), "*|&|%name%"); // Ensure that "complex" is not the variables name
                 else if (Token::Match(tok2, "char|int")) {
                     if (!typeSpec)

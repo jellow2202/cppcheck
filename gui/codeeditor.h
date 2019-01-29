@@ -30,18 +30,18 @@ private:
         QRegularExpression pattern;
         QTextCharFormat format;
     };
-    QVector<HighlightingRule> highlightingRules;
-    QVector<HighlightingRule> highlightingRulesWithSymbols;
+    QVector<HighlightingRule> mHighlightingRules;
+    QVector<HighlightingRule> mHighlightingRulesWithSymbols;
 
-    QRegularExpression commentStartExpression;
-    QRegularExpression commentEndExpression;
+    QRegularExpression mCommentStartExpression;
+    QRegularExpression mCommentEndExpression;
 
-    QTextCharFormat keywordFormat;
-    QTextCharFormat classFormat;
-    QTextCharFormat singleLineCommentFormat;
-    QTextCharFormat multiLineCommentFormat;
-    QTextCharFormat quotationFormat;
-    QTextCharFormat symbolFormat;
+    QTextCharFormat mKeywordFormat;
+    QTextCharFormat mClassFormat;
+    QTextCharFormat mSingleLineCommentFormat;
+    QTextCharFormat mMultiLineCommentFormat;
+    QTextCharFormat mQuotationFormat;
+    QTextCharFormat mSymbolFormat;
 };
 
 class CodeEditor : public QPlainTextEdit {
@@ -55,6 +55,12 @@ public:
     void lineNumberAreaPaintEvent(QPaintEvent *event);
     int lineNumberAreaWidth();
 
+    /**
+     * Set source code to show, goto error line and highlight that line.
+     * \param code         The source code.
+     * \param errorLine    line number
+     * \param symbols      the related symbols, these are marked
+     */
     void setError(const QString &code, int errorLine, const QStringList &symbols);
 
 protected:
@@ -66,8 +72,8 @@ private slots:
     void updateLineNumberArea(const QRect &, int);
 
 private:
-    QWidget *lineNumberArea;
-    Highlighter *highlighter;
+    QWidget *mLineNumberArea;
+    Highlighter *mHighlighter;
     int mErrorPosition;
 };
 
@@ -75,20 +81,20 @@ private:
 class LineNumberArea : public QWidget {
 public:
     explicit LineNumberArea(CodeEditor *editor) : QWidget(editor) {
-        codeEditor = editor;
+        mCodeEditor = editor;
     }
 
     QSize sizeHint() const override {
-        return QSize(codeEditor->lineNumberAreaWidth(), 0);
+        return QSize(mCodeEditor->lineNumberAreaWidth(), 0);
     }
 
 protected:
     void paintEvent(QPaintEvent *event) override {
-        codeEditor->lineNumberAreaPaintEvent(event);
+        mCodeEditor->lineNumberAreaPaintEvent(event);
     }
 
 private:
-    CodeEditor *codeEditor;
+    CodeEditor *mCodeEditor;
 };
 
 #endif // CODEEDITOR_H

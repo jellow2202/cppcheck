@@ -17,7 +17,11 @@ MainWindow::MainWindow(QWidget *parent) :
     ui(new Ui::MainWindow)
 {
     ui->setupUi(this);
-    std::srand(std::time(0));
+    std::srand(static_cast<unsigned int>(std::time(Q_NULLPTR)));
+    QDir workFolder(WORK_FOLDER);
+    if (!workFolder.exists()) {
+        workFolder.mkdir(WORK_FOLDER);
+    }
 }
 
 MainWindow::~MainWindow()
@@ -27,33 +31,54 @@ MainWindow::~MainWindow()
 
 void MainWindow::loadFile()
 {
-    const QString fileName = QFileDialog::getOpenFileName(this, tr("daca results file"), WORK_FOLDER, tr("Text files (*.txt)"));
+    ui->statusBar->clearMessage();
+    const QString fileName = QFileDialog::getOpenFileName(this, tr("daca results file"), WORK_FOLDER, tr("Text files (*.txt);;All (*.*)"));
     if (fileName.isEmpty())
         return;
-    ui->results->clear();
     QFile file(fileName);
     file.open(QIODevice::ReadOnly | QIODevice::Text);
     QTextStream textStream(&file);
+    load(textStream);
+}
+
+void MainWindow::loadFromClipboard()
+{
+    ui->statusBar->clearMessage();
+    QString clipboardContent = QApplication::clipboard()->text();
+    QTextStream textStream(&clipboardContent);
+    load(textStream);
+}
+
+void MainWindow::load(QTextStream &textStream)
+{
     QString url;
     QString errorMessage;
     QStringList allErrors;
+    ui->results->clear();
     while (true) {
-        const QString line = textStream.readLine();
+        QString line = textStream.readLine();
         if (line.isNull())
             break;
         if (line.startsWith("ftp://")) {
-            if (!url.isEmpty() && !errorMessage.isEmpty())
-                allErrors << (url + "\n" + errorMessage);
             url = line;
+            if (!errorMessage.isEmpty())
+                allErrors << errorMessage;
             errorMessage.clear();
         } else if (!url.isEmpty() && QRegExp(".*: (error|warning|style|note):.*").exactMatch(line)) {
-            if (!errorMessage.isEmpty())
-                errorMessage += '\n';
-            errorMessage += line;
+            if (QRegExp("^(head|1.[0-9][0-9]) .*").exactMatch(line))
+                line = line.mid(5);
+            if (line.indexOf(": note:") > 0)
+                errorMessage += '\n' + line;
+            else if (errorMessage.isEmpty()) {
+                errorMessage = url + '\n' + line;
+            } else {
+                allErrors << errorMessage;
+                errorMessage = url + '\n' + line;
+            }
         }
     }
-    if (!url.isEmpty() && !errorMessage.isEmpty())
-        allErrors << (url + "\n" + errorMessage);
+    if (!errorMessage.isEmpty())
+        allErrors << errorMessage;
     if (allErrors.size() > 100) {
         // remove items in /test/
         for (int i = allErrors.size()-1; i >= 0 && allErrors.size() > 100; --i) {
@@ -68,46 +93,77 @@ void MainWindow::loadFile()
     }
 }
 
-static bool wget(const QString url)
+bool MainWindow::runProcess(const QString &programName, const QStringList &arguments)
 {
     QProcess process;
     process.setWorkingDirectory(WORK_FOLDER);
-    process.start("wget", QStringList() << url);
-    return process.waitForFinished(-1);
+    process.start(programName, arguments);
+    bool success = process.waitForFinished(-1);
+    if (!success) {
+        QString errorstr(programName);
+        errorstr.append(": ");
+        errorstr.append(process.errorString());
+        ui->statusBar->showMessage(errorstr);
+    } else {
+        int exitCode = process.exitCode();
+        if (exitCode != 0) {
+            success = false;
+            const QByteArray stderrOutput = process.readAllStandardError();
+            QString errorstr(programName);
+            errorstr.append(QString(": exited with %1: ").arg(exitCode));
+            errorstr.append(stderrOutput);
+            ui->statusBar->showMessage(errorstr);
+        }
+    }
+    return success;
 }
 
-static bool unpackArchive(const QString archiveName)
+bool MainWindow::wget(const QString url)
+{
+    return runProcess("wget", QStringList() << url);
+}
+
+bool MainWindow::unpackArchive(const QString archiveName)
 {
     // Unpack archive
     QStringList args;
+#ifdef Q_OS_WIN
+    /* On Windows --force-local is necessary because tar wants to connect to a remote system
+     * when a colon is found in the archiveName. So "C:/Users/blah/triage/package" would not work
+     * without it. */
+    args << "--force-local";
+#endif
     if (archiveName.endsWith(".tar.gz"))
-        args << "xzvf";
+        args << "-xzvf";
     else if (archiveName.endsWith(".tar.bz2"))
-        args << "xjvf";
+        args << "-xjvf";
     else if (archiveName.endsWith(".tar.xz"))
-        args << "xJvf";
+        args << "-xJvf";
+    else {
+        // Try to automatically find an (un)compressor for this archive
+        args << "-xavf";
+    }
     args << archiveName;
 
-    QProcess process;
-    process.setWorkingDirectory(WORK_FOLDER);
-    process.start("tar", args);
-    return process.waitForFinished(-1);
+    return runProcess("tar", args);
 }
 
 void MainWindow::showResult(QListWidgetItem *item)
 {
+    ui->statusBar->clearMessage();
     if (!item->text().startsWith("ftp://"))
         return;
     const QStringList lines = item->text().split("\n");
     if (lines.size() < 2)
         return;
     const QString url = lines[0];
-    const QString msg = lines[1];
-
+    QString msg = lines[1];
+    if (QRegExp("^(head|1.[0-9][0-9]) .*").exactMatch(msg))
+        msg = msg.mid(5);
     const QString archiveName = url.mid(url.lastIndexOf("/") + 1);
     const int pos1 = msg.indexOf(":");
     const int pos2 = msg.indexOf(":", pos1+1);
-    const QString fileName = msg.left(msg.indexOf(":"));
+    const QString fileName = WORK_FOLDER + '/' + msg.left(msg.indexOf(":"));
     const int lineNumber = msg.mid(pos1+1,pos2-pos1-1).toInt();
 
     if (!QFileInfo(fileName).exists()) {
@@ -127,21 +183,18 @@ void MainWindow::showResult(QListWidgetItem *item)
 
     // Open file
     ui->code->setFocus();
-    QFile f(WORK_FOLDER + '/' + fileName);
-    f.open(QIODevice::ReadOnly | QIODevice::Text);
-    QTextStream textStream(&f);
-    const QString fileData = textStream.readAll();
-    ui->code->setPlainText(fileData);
-    for (int pos = 0, line = 1; pos < fileData.size(); ++pos) {
-        if (fileData[pos] == '\n') {
-            ++line;
-            if (line == lineNumber) {
-                QTextCursor textCursor = ui->code->textCursor();
-                textCursor.setPosition(pos+1);
-                ui->code->setTextCursor(textCursor);
-                ui->code->centerCursor();
-                break;
-            }
-        }
+    QFile f(fileName);
+    if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        const QString errorMsg =
+            QString("Opening file %1 failed: %2").arg(f.fileName()).arg(f.errorString());
+        ui->statusBar->showMessage(errorMsg);
+    } else {
+        QTextStream textStream(&f);
+        const QString fileData = textStream.readAll();
+        ui->code->setError(fileData, lineNumber, QStringList());
+
+        ui->edit1->setText(url);
+        ui->edit2->setText(fileName);
+        f.close();
     }
 }

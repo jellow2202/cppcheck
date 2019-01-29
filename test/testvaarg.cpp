@@ -1,6 +1,6 @@
 /*
  * Cppcheck - A tool for static C/C++ code analysis
- * Copyright (C) 2007-2017 Cppcheck team.
+ * Copyright (C) 2007-2018 Cppcheck team.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -44,7 +44,7 @@ private:
         checkVaarg.runSimplifiedChecks(&tokenizer, &settings, this);
     }
 
-    void run() override {
+    void run() OVERRIDE {
         settings.addEnabled("warning");
 
         TEST_CASE(wrongParameterTo_va_start);
@@ -155,6 +155,32 @@ private:
               "    va_end(arg_ptr);\n"
               "}");
         ASSERT_EQUALS("[test.cpp:4]: (error) va_list 'arg_ptr' was opened but not closed by va_end().\n", errout.str());
+
+        // #8124
+        check("void f(int n, ...)\n"
+              "{\n"
+              "    va_list ap;\n"
+              "    va_start(ap, n);\n"
+              "    std::vector<std::string> v(n);\n"
+              "    std::generate_n(v.begin(), n, [&ap]()\n"
+              "    {\n"
+              "        return va_arg(ap, const char*);\n"
+              "    });\n"
+              "    va_end(ap);\n"
+              "}\n");
+        ASSERT_EQUALS("", errout.str());
+
+        check("void f(int n, ...)\n"
+              "{\n"
+              "    va_list ap;\n"
+              "    va_start(ap, n);\n"
+              "    std::vector<std::string> v(n);\n"
+              "    std::generate_n(v.begin(), n, [&ap]()\n"
+              "    {\n"
+              "        return va_arg(ap, const char*);\n"
+              "    });\n"
+              "}\n");
+        ASSERT_EQUALS("[test.cpp:10]: (error) va_list 'ap' was opened but not closed by va_end().\n", errout.str());
     }
 
     void va_list_usedBeforeStarted() {

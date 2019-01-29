@@ -1,6 +1,6 @@
 /*
  * Cppcheck - A tool for static C/C++ code analysis
- * Copyright (C) 2007-2017 Cppcheck team.
+ * Copyright (C) 2007-2018 Cppcheck team.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -62,7 +62,7 @@ public:
     }
 
     /** Checks that uses the simplified token list */
-    void runSimplifiedChecks(const Tokenizer *tokenizer, const Settings *settings, ErrorLogger *errorLogger) override {
+    void runSimplifiedChecks(const Tokenizer *tokenizer, const Settings *settings, ErrorLogger *errorLogger) OVERRIDE {
         if (tokenizer->isC())
             return;
 
@@ -137,7 +137,7 @@ private:
     }
 
     /** Generate all possible errors (for --errorlist) */
-    void getErrorMessages(ErrorLogger *errorLogger, const Settings *settings) const override {
+    void getErrorMessages(ErrorLogger *errorLogger, const Settings *settings) const OVERRIDE {
         CheckExceptionSafety c(nullptr, settings, errorLogger);
         c.destructorsError(nullptr, "Class");
         c.deallocThrowError(nullptr, "p");
@@ -153,7 +153,7 @@ private:
     }
 
     /** wiki formatted description of the class (for --doc) */
-    std::string classInfo() const override {
+    std::string classInfo() const OVERRIDE {
         return "Checking exception safety\n"
                "- Throwing exceptions in destructors\n"
                "- Throwing exception during invalid state\n"

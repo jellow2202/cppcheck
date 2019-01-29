@@ -1,6 +1,6 @@
 /*
  * Cppcheck - A tool for static C/C++ code analysis
- * Copyright (C) 2007-2017 Cppcheck team.
+ * Copyright (C) 2007-2018 Cppcheck team.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -93,7 +93,7 @@ QStringList FileList::getFileList() const
     if (mExcludedPaths.empty()) {
         QStringList names;
         foreach (QFileInfo item, mFileList) {
-            QString name = QDir::fromNativeSeparators(item.canonicalFilePath());
+            QString name = QDir::fromNativeSeparators(item.filePath());
             names << name;
         }
         return names;

@@ -1,6 +1,6 @@
 /*
  * Cppcheck - A tool for static C/C++ code analysis
- * Copyright (C) 2007-2017 Cppcheck team.
+ * Copyright (C) 2007-2018 Cppcheck team.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -42,7 +42,7 @@ private:
     std::vector<std::string> extendedOps;
     std::vector<std::string> assignmentOps;
 
-    void run() override {
+    void run() OVERRIDE {
         arithmeticalOps = { "+", "-", "*", "/", "%", "<<", ">>" };
         logicalOps = { "&&", "||", "!" };
         comparisonOps = { "==", "!=", "<", "<=", ">", ">=" };
@@ -321,7 +321,7 @@ private:
 
     void deleteLast() const {
         TokensFrontBack listEnds{ 0 };
-        Token **tokensBack = &(listEnds.back);
+        Token ** const tokensBack = &(listEnds.back);
         Token tok(&listEnds);
         tok.insertToken("aba");
         ASSERT_EQUALS(true, *tokensBack == tok.next());
@@ -331,7 +331,7 @@ private:
 
     void deleteFirst() const {
         TokensFrontBack listEnds{ 0 };
-        Token **tokensFront = &(listEnds.front);
+        Token ** const tokensFront = &(listEnds.front);
         Token tok(&listEnds);
 
         tok.insertToken("aba");
@@ -886,14 +886,14 @@ private:
     void canFindMatchingBracketsNeedsOpen() const {
         givenACodeSampleToTokenize var("std::deque<std::set<int> > intsets;");
 
-        const Token* t = var.tokens()->findClosingBracket();
+        const Token* const t = var.tokens()->findClosingBracket();
         ASSERT(t == nullptr);
     }
 
     void canFindMatchingBracketsInnerPair() const {
         givenACodeSampleToTokenize var("std::deque<std::set<int> > intsets;");
 
-        Token* t = const_cast<Token*>(var.tokens()->tokAt(7))->findClosingBracket();
+        const Token * const t = const_cast<Token*>(var.tokens()->tokAt(7))->findClosingBracket();
         ASSERT_EQUALS(">", t->str());
         ASSERT(var.tokens()->tokAt(9) == t);
     }
@@ -901,7 +901,7 @@ private:
     void canFindMatchingBracketsOuterPair() const {
         givenACodeSampleToTokenize var("std::deque<std::set<int> > intsets;");
 
-        const Token* t = var.tokens()->tokAt(3)->findClosingBracket();
+        const Token* const t = var.tokens()->tokAt(3)->findClosingBracket();
         ASSERT_EQUALS(">", t->str());
         ASSERT(var.tokens()->tokAt(10) == t);
     }
@@ -909,7 +909,7 @@ private:
     void canFindMatchingBracketsWithTooManyClosing() const {
         givenACodeSampleToTokenize var("X< 1>2 > x1;\n");
 
-        const Token* t = var.tokens()->next()->findClosingBracket();
+        const Token* const t = var.tokens()->next()->findClosingBracket();
         ASSERT_EQUALS(">", t->str());
         ASSERT(var.tokens()->tokAt(3) == t);
     }
@@ -927,18 +927,21 @@ private:
     void findClosingBracket() {
         givenACodeSampleToTokenize var("template<typename X, typename...Y> struct S : public Fred<Wilma<Y...>> {}");
 
-        const Token* t = var.tokens()->next()->findClosingBracket();
+        const Token* const t = var.tokens()->next()->findClosingBracket();
         ASSERT(Token::simpleMatch(t, "> struct"));
     }
 
     void expressionString() {
         givenACodeSampleToTokenize var1("void f() { *((unsigned long long *)x) = 0; }");
-        const Token *tok1 = Token::findsimplematch(var1.tokens(), "*");
+        const Token *const tok1 = Token::findsimplematch(var1.tokens(), "*");
         ASSERT_EQUALS("*((unsigned long long*)x)", tok1->expressionString());
 
         givenACodeSampleToTokenize var2("typedef unsigned long long u64; void f() { *((u64 *)x) = 0; }");
-        const Token *tok2 = Token::findsimplematch(var2.tokens(), "*");
+        const Token *const tok2 = Token::findsimplematch(var2.tokens(), "*");
         ASSERT_EQUALS("*((unsigned long long*)x)", tok2->expressionString());
+
+        givenACodeSampleToTokenize data3("return (t){1,2};");
+        ASSERT_EQUALS("return(t){1,2}", data3.tokens()->expressionString());
     }
 };
 

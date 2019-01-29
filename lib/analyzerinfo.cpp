@@ -1,6 +1,6 @@
 /*
 * Cppcheck - A tool for static C/C++ code analysis
-* Copyright (C) 2007-2017 Cppcheck team.
+* Copyright (C) 2007-2018 Cppcheck team.
 *
 * This program is free software: you can redistribute it and/or modify
 * it under the terms of the GNU General Public License as published by
@@ -49,27 +49,27 @@ void AnalyzerInformation::writeFilesTxt(const std::string &buildDir, const std::
 
     const std::string filesTxt(buildDir + "/files.txt");
     std::ofstream fout(filesTxt);
-    for (std::list<std::string>::const_iterator f = sourcefiles.begin(); f != sourcefiles.end(); ++f) {
-        const std::string afile = getFilename(*f);
+    for (const std::string &f : sourcefiles) {
+        const std::string afile = getFilename(f);
         if (fileCount.find(afile) == fileCount.end())
             fileCount[afile] = 0;
-        fout << afile << ".a" << (++fileCount[afile]) << "::" << Path::fromNativeSeparators(*f) << '\n';
+        fout << afile << ".a" << (++fileCount[afile]) << "::" << Path::fromNativeSeparators(f) << '\n';
     }
 
-    for (std::list<ImportProject::FileSettings>::const_iterator fs = fileSettings.begin(); fs != fileSettings.end(); ++fs) {
-        const std::string afile = getFilename(fs->filename);
+    for (const ImportProject::FileSettings &fs : fileSettings) {
+        const std::string afile = getFilename(fs.filename);
         if (fileCount.find(afile) == fileCount.end())
             fileCount[afile] = 0;
-        fout << afile << ".a" << (++fileCount[afile]) << ":" << fs->cfg << ":" << Path::fromNativeSeparators(fs->filename) << std::endl;
+        fout << afile << ".a" << (++fileCount[afile]) << ":" << fs.cfg << ":" << Path::fromNativeSeparators(fs.filename) << std::endl;
     }
 }
 
 void AnalyzerInformation::close()
 {
-    analyzerInfoFile.clear();
-    if (fout.is_open()) {
-        fout << "</analyzerinfo>\n";
-        fout.close();
+    mAnalyzerInfoFile.clear();
+    if (mOutputStream.is_open()) {
+        mOutputStream << "</analyzerinfo>\n";
+        mOutputStream.close();
     }
 }
 
@@ -102,11 +102,11 @@ std::string AnalyzerInformation::getAnalyzerInfoFile(const std::string &buildDir
     std::ifstream fin(files);
     if (fin.is_open()) {
         std::string line;
-        const std::string endsWith(':' + cfg + ':' + sourcefile);
+        const std::string end(':' + cfg + ':' + sourcefile);
         while (std::getline(fin,line)) {
-            if (line.size() <= endsWith.size() + 2U)
+            if (line.size() <= end.size() + 2U)
                 continue;
-            if (line.compare(line.size()-endsWith.size(), endsWith.size(), endsWith) != 0)
+            if (!endsWith(line, end.c_str(), end.size()))
                 continue;
             std::ostringstream ostr;
             ostr << buildDir << '/' << line.substr(0,line.find(':'));
@@ -132,17 +132,17 @@ bool AnalyzerInformation::analyzeFile(const std::string &buildDir, const std::st
         return true;
     close();
 
-    analyzerInfoFile = AnalyzerInformation::getAnalyzerInfoFile(buildDir,sourcefile,cfg);
+    mAnalyzerInfoFile = AnalyzerInformation::getAnalyzerInfoFile(buildDir,sourcefile,cfg);
 
-    if (skipAnalysis(analyzerInfoFile, checksum, errors))
+    if (skipAnalysis(mAnalyzerInfoFile, checksum, errors))
         return false;
 
-    fout.open(analyzerInfoFile);
-    if (fout.is_open()) {
-        fout << "<?xml version=\"1.0\"?>\n";
-        fout << "<analyzerinfo checksum=\"" << checksum << "\">\n";
+    mOutputStream.open(mAnalyzerInfoFile);
+    if (mOutputStream.is_open()) {
+        mOutputStream << "<?xml version=\"1.0\"?>\n";
+        mOutputStream << "<analyzerinfo checksum=\"" << checksum << "\">\n";
     } else {
-        analyzerInfoFile.clear();
+        mAnalyzerInfoFile.clear();
     }
 
     return true;
@@ -150,12 +150,12 @@ bool AnalyzerInformation::analyzeFile(const std::string &buildDir, const std::st
 
 void AnalyzerInformation::reportErr(const ErrorLogger::ErrorMessage &msg, bool /*verbose*/)
 {
-    if (fout.is_open())
-        fout << msg.toXML() << '\n';
+    if (mOutputStream.is_open())
+        mOutputStream << msg.toXML() << '\n';
 }
 
 void AnalyzerInformation::setFileInfo(const std::string &check, const std::string &fileInfo)
 {
-    if (fout.is_open() && !fileInfo.empty())
-        fout << "  <FileInfo check=\"" << check << "\">\n" << fileInfo << "  </FileInfo>\n";
+    if (mOutputStream.is_open() && !fileInfo.empty())
+        mOutputStream << "  <FileInfo check=\"" << check << "\">\n" << fileInfo << "  </FileInfo>\n";
 }

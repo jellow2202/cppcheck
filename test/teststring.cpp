@@ -1,6 +1,6 @@
 /*
  * Cppcheck - A tool for static C/C++ code analysis
- * Copyright (C) 2007-2017 Cppcheck team.
+ * Copyright (C) 2007-2018 Cppcheck team.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -31,7 +31,7 @@ public:
 private:
     Settings settings;
 
-    void run() override {
+    void run() OVERRIDE {
         settings.addEnabled("warning");
         settings.addEnabled("style");
 
@@ -98,7 +98,7 @@ private:
               "  char* s = \"Y\";\n"
               "  foo_FP1(s);\n"
               "}");
-        ASSERT_EQUALS("[test.cpp:2] -> [test.cpp:5]: (error) Modifying string literal \"Y\" directly or indirectly is undefined behaviour.\n", errout.str());
+        TODO_ASSERT_EQUALS("[test.cpp:2] -> [test.cpp:5]: (error) Modifying string literal \"Y\" directly or indirectly is undefined behaviour.\n", "", errout.str());
 
         check("void foo_FP1(char *p) {\n"
               "  p[1] = 'B';\n"
@@ -579,6 +579,28 @@ private:
               "    return f2(\"Hello\");\n"
               "}");
         ASSERT_EQUALS("", errout.str());
+
+        // #7750 warn about char literals in boolean expressions
+        check("void f() {\n"
+              "  if('a'){}\n"
+              "  if(L'b'){}\n"
+              "  if(1 && 'c'){}\n"
+              "  int x = 'd' ? 1 : 2;\n" // <- TODO
+              "}");
+        ASSERT_EQUALS("[test.cpp:2]: (warning) Conversion of char literal 'a' to bool always evaluates to true.\n"
+                      "[test.cpp:3]: (warning) Conversion of char literal 'b' to bool always evaluates to true.\n"
+                      "[test.cpp:4]: (warning) Conversion of char literal 'c' to bool always evaluates to true.\n"
+                      , errout.str());
+
+        check("void f() {\n"
+              "  if('\\0'){}\n"
+              "}");
+        ASSERT_EQUALS("", errout.str());
+
+        check("void f() {\n"
+              "  if('\\0' || cond){}\n"
+              "}");
+        ASSERT_EQUALS("[test.cpp:2]: (warning) Conversion of char literal '\\0' to bool always evaluates to false.\n", errout.str());
     }
 
     void deadStrcmp() {

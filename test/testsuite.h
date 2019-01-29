@@ -37,6 +37,10 @@ private:
     static std::size_t todos_counter;
     static std::size_t succeeded_todos_counter;
     static std::set<std::string> missingLibs;
+    bool mVerbose;
+    std::string mTemplateFormat;
+    std::string mTemplateLocation;
+    std::string mTestname;
 
 protected:
     std::string testToRun;
@@ -45,6 +49,7 @@ protected:
     virtual void run() = 0;
 
     bool prepareTest(const char testname[]);
+    std::string getLocationStr(const char * const filename, const unsigned int linenr) const;
 
     void assert_(const char * const filename, const unsigned int linenr, const bool condition) const;
 
@@ -66,11 +71,19 @@ protected:
     void complainMissingLib(const char * const libname) const;
     std::string deleteLineNumber(const std::string &message) const;
 
+    void setVerbose(bool v) {
+        mVerbose = v;
+    }
+
+    void setMultiline() {
+        mTemplateFormat = "{file}:{line}:{severity}:{message}";
+        mTemplateLocation = "{file}:{line}:note:{info}";
+    }
 
     void processOptions(const options& args);
 public:
-    virtual void reportOut(const std::string &outmsg) override;
-    virtual void reportErr(const ErrorLogger::ErrorMessage &msg) override;
+    virtual void reportOut(const std::string &outmsg) OVERRIDE;
+    virtual void reportErr(const ErrorLogger::ErrorMessage &msg) OVERRIDE;
     void run(const std::string &str);
     const std::string classname;
 
@@ -83,7 +96,7 @@ public:
 extern std::ostringstream errout;
 extern std::ostringstream output;
 
-#define TEST_CASE( NAME )  if ( prepareTest(#NAME) ) { NAME(); }
+#define TEST_CASE( NAME )  if ( prepareTest(#NAME) ) { setVerbose(false); NAME(); }
 #define ASSERT( CONDITION )  assert_(__FILE__, __LINE__, CONDITION)
 #define ASSERT_EQUALS( EXPECTED , ACTUAL )  assertEquals(__FILE__, __LINE__, EXPECTED, ACTUAL)
 #define ASSERT_EQUALS_WITHOUT_LINENUMBERS( EXPECTED , ACTUAL )  assertEqualsWithoutLineNumbers(__FILE__, __LINE__, EXPECTED, ACTUAL)
@@ -92,7 +105,7 @@ extern std::ostringstream output;
 #define ASSERT_THROW( CMD, EXCEPTION ) try { CMD ; assertThrowFail(__FILE__, __LINE__); } catch (const EXCEPTION&) { } catch (...) { assertThrowFail(__FILE__, __LINE__); }
 #define ASSERT_NO_THROW( CMD ) try { CMD ; } catch (...) { assertNoThrowFail(__FILE__, __LINE__); }
 #define TODO_ASSERT_THROW( CMD, EXCEPTION ) try { CMD ; } catch (const EXCEPTION&) { } catch (...) { assertThrow(__FILE__, __LINE__); }
-#define TODO_ASSERT( CONDITION ) { bool condition=CONDITION; todoAssertEquals(__FILE__, __LINE__, true, false, condition); }
+#define TODO_ASSERT( CONDITION ) { const bool condition=(CONDITION); todoAssertEquals(__FILE__, __LINE__, true, false, condition); }
 #define TODO_ASSERT_EQUALS( WANTED , CURRENT , ACTUAL ) todoAssertEquals(__FILE__, __LINE__, WANTED, CURRENT, ACTUAL)
 #define REGISTER_TEST( CLASSNAME ) namespace { CLASSNAME instance_##CLASSNAME; }
 

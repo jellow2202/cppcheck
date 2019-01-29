@@ -1,6 +1,6 @@
 ﻿/*
 * Cppcheck - A tool for static C/C++ code analysis
-* Copyright (C) 2007-2017 Cppcheck team.
+* Copyright (C) 2007-2018 Cppcheck team.
 *
 * This program is free software: you can redistribute it and/or modify
 * it under the terms of the GNU General Public License as published by
@@ -44,7 +44,7 @@ public:
 
 private:
 
-    void run() override {
+    void run() OVERRIDE {
         TEST_CASE(runSamples);
         TEST_CASE(runConsoleCodePageTranslationOnWindows);
     }
@@ -61,10 +61,12 @@ private:
         FileLister::recursiveAddFiles(files, "samples", matcher);
 #endif
         for (std::map<std::string, std::size_t>::const_iterator i = files.begin(); i != files.end(); ++i) {
+            if (i->first.find("memleak") != std::string::npos)
+                continue;
             CLEAR_REDIRECT_ERROUT;
             char* path = new char[i->first.size() + 1];
             strcpy(path, i->first.c_str());
-            const char* argv[] = {
+            const char * const argv[] = {
 #ifdef _WIN32
                 ".\\..\\testrunner",
 #else

@@ -113,7 +113,7 @@ public:
      * @brief Terminate checking. The checking will be terminated as soon as possible.
      */
     void terminate() {
-        _settings.terminate();
+        mSettings.terminate();
     }
 
     /**
@@ -126,7 +126,7 @@ public:
     void purgedConfigurationMessage(const std::string &file, const std::string& configuration);
 
     void dontSimplify() {
-        _simplify = false;
+        mSimplify = false;
     }
 
     /** Analyse whole program, run this after all TUs has been scanned.
@@ -189,44 +189,46 @@ private:
      * "[filepath:line number] Message", e.g.
      * "[main.cpp:4] Uninitialized member variable"
      */
-    virtual void reportErr(const ErrorLogger::ErrorMessage &msg) override;
+    virtual void reportErr(const ErrorLogger::ErrorMessage &msg) OVERRIDE;
 
     /**
      * @brief Information about progress is directed here.
      *
      * @param outmsg Message to show, e.g. "Checking main.cpp..."
      */
-    virtual void reportOut(const std::string &outmsg) override;
+    virtual void reportOut(const std::string &outmsg) OVERRIDE;
 
-    std::list<std::string> _errorList;
-    Settings _settings;
+    std::list<std::string> mErrorList;
+    Settings mSettings;
 
-    void reportProgress(const std::string &filename, const char stage[], const std::size_t value) override;
+    void reportProgress(const std::string &filename, const char stage[], const std::size_t value) OVERRIDE;
 
     /**
      * Output information messages.
      */
-    virtual void reportInfo(const ErrorLogger::ErrorMessage &msg) override;
+    virtual void reportInfo(const ErrorLogger::ErrorMessage &msg) OVERRIDE;
 
-    ErrorLogger &_errorLogger;
+    ErrorLogger &mErrorLogger;
 
     /** @brief Current preprocessor configuration */
-    std::string cfg;
+    std::string mCurrentConfig;
 
-    unsigned int exitcode;
+    unsigned int mExitCode;
 
-    bool _useGlobalSuppressions;
+    bool mSuppressInternalErrorFound;
+
+    bool mUseGlobalSuppressions;
 
     /** Are there too many configs? */
-    bool tooManyConfigs;
+    bool mTooManyConfigs;
 
     /** Simplify code? true by default */
-    bool _simplify;
+    bool mSimplify;
 
     /** File info used for whole program analysis */
-    std::list<Check::FileInfo*> fileInfo;
+    std::list<Check::FileInfo*> mFileInfo;
 
-    AnalyzerInformation analyzerInformation;
+    AnalyzerInformation mAnalyzerInformation;
 };
 
 /// @}

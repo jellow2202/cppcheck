@@ -1,6 +1,6 @@
 /*
  * Cppcheck - A tool for static C/C++ code analysis
- * Copyright (C) 2007-2017 Cppcheck team.
+ * Copyright (C) 2007-2018 Cppcheck team.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -62,10 +62,10 @@ public:
 
 private:
     /** @brief enable extra checks by id */
-    int _enabled;
+    int mEnabled;
 
     /** @brief terminate checking */
-    static bool _terminated;
+    static bool mTerminated;
 
 public:
     Settings();
@@ -73,14 +73,17 @@ public:
     /** @brief --cppcheck-build-dir */
     std::string buildDir;
 
-    /** @brief Is --debug given? */
-    bool debug;
+    /** @brief Is --debug-simplified given? */
+    bool debugSimplified;
 
     /** @brief Is --debug-normal given? */
     bool debugnormal;
 
     /** @brief Is --debug-warnings given? */
     bool debugwarnings;
+
+    /** @brief Is --debug-template given? */
+    bool debugtemplate;
 
     /** @brief Is --dump given? */
     bool dump;
@@ -116,12 +119,12 @@ public:
 
     /** @brief Request termination of checking */
     static void terminate(bool t = true) {
-        Settings::_terminated = t;
+        Settings::mTerminated = t;
     }
 
     /** @brief termination requested? */
     static bool terminated() {
-        return Settings::_terminated;
+        return Settings::mTerminated;
     }
 
     /** @brief Force checking the files with "too many" configurations (--force). */
@@ -185,7 +188,7 @@ public:
      * @return true if the check is enabled.
      */
     bool isEnabled(EnabledGroup group) const {
-        return (_enabled & group) == group;
+        return (mEnabled & group) == group;
     }
 
     /**
@@ -212,7 +215,7 @@ public:
      * @brief Disables all severities, except from error.
      */
     void clearEnabled() {
-        _enabled = 0;
+        mEnabled = 0;
     }
 
     enum Language {

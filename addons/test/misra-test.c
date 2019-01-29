@@ -2,7 +2,9 @@
 // ~/cppcheck/cppcheck --dump misra-test.c && python ../misra.py -verify misra-test.c.dump
 
 #include "path\file.h" // 20.2
-#include /*abc*/ "file.h" // 20.3
+#include /*abc*/ "file.h" // no warning
+#include PATH "file.h" // 20.3
+#include<file.h> // no warning
 #include <setjmp.h> // 21.4
 #include <signal.h> // 21.5
 #include <stdio.h> //21.6
@@ -17,12 +19,15 @@ typedef unsigned int       u32;
 typedef signed int         s32;
 typedef unsigned long long u64;
 
-//// 3.1
+//   // 3.1
+////
 
 extern int misra_5_1_extern_var_hides_var_x;
 extern int misra_5_1_extern_var_hides_var_y; //5.1
 
-extern int misra_5_2_var_hides_var______31x;
+extern const uint8_t misra_5_2_var1;
+const uint8_t        misra_5_2_var1 = 3; // no warning
+static int misra_5_2_var_hides_var______31x;
 static int misra_5_2_var_hides_var______31y;//5.2
 static int misra_5_2_function_hides_var_31x;
 void misra_5_2_function_hides_var_31y(void) {}//5.2
@@ -139,6 +144,7 @@ extern int a811[]; // 8.11
 
 enum misra_8_12_a { misra_a1 = 1, misra_a2 = 2, misra_a3, misra_a4 = 3 }; //8.12
 enum misra_8_12_b { misra_b1, misra_b2, misra_b3 = 3, misra_b4 = 3 }; // no-warning
+enum misra_8_12_c { misra_c1 = misra_a1, misra_c2 = 1 }; // no-warning
 
 void misra_8_14(char * restrict str) {} // 8.14
 
@@ -153,13 +159,15 @@ void misra_10_1() {
 
 void misra_10_4(u32 x, s32 y) {
   z = x + 3; // 10.4
-  enum misra_10_4_enuma { misra_10_4_A1, misra_10_4_A2, misra_10_4_A3 };
+  enum misra_10_4_enuma { misra_10_4_A1, misra_10_4_A2, misra_10_4_A3 } a;
   enum misra_10_4_enumb { misra_10_4_B1, misra_10_4_B2, misra_10_4_B3 };
   if ( misra_10_4_B1 > misra_10_4_A1 ) //10.4
    {
       ; 
    }
-   z = x + y; //10.4
+  z = x + y; //10.4
+  z = (a == misra_10_4_A3) ? x : y; //10.4
+  z = (a == misra_10_4_A3) ? y : y; // no-warning
 }
 
 void misra_10_6(u8 x, u32 a, u32 b) {
@@ -209,6 +217,7 @@ void misra_11_7(int *p, float f) {
 }
 
 char * misra_11_8(const char *str) {
+  misra_11_8(str); // no-warning
   return (char *)str; // 11.8
 }
 
@@ -346,9 +355,25 @@ void misra_15_6() {
 }
 
 void misra_15_7() {
+  uint32_t var = 0;
+  uint32_t var2 = 0;
+
   if (x!=0){} // no-warning
   if (x!=0){} else if(x==1){} // 15.7
   if (x!=0){} else if(x==1){}else{;} // no-warning
+
+  if (x!=0)
+  {
+  }
+  else
+  {
+    var = 5u;
+
+    if (var != 5u)
+    {
+        var2 = 10u;
+    }   // no-warning
+  }
 }
 
 void misra_16_2() {

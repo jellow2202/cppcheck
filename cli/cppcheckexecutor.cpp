@@ -297,7 +297,7 @@ static const size_t MYSTACKSIZE = 16*1024+SIGSTKSZ; // wild guess about a reason
 static char mytstack[MYSTACKSIZE]= {0}; // alternative stack for signal handler
 static bool bStackBelowHeap=false; // lame attempt to locate heap vs. stack address space. See CppCheckExecutor::check_wrapper()
 
-/*
+/**
  * \param[in] ptr address to be examined.
  * \return true if address is supposed to be on stack (contrary to heap). If ptr is 0 false will be returned.
  * If unknown better return false.
@@ -497,6 +497,7 @@ static void CppcheckSignalHandler(int signo, siginfo_t * info, void * context)
             break;
         }
         fprintf(output, " (%sat 0x%lx).%s\n",
+                // cppcheck-suppress knownConditionTrueFalse ; FP
                 (type==-1)? "" :
                 (type==0) ? "reading " : "writing ",
                 (unsigned long)info->si_addr,
@@ -579,11 +580,11 @@ namespace {
             return;
         const HANDLE hProcess   = GetCurrentProcess();
         const HANDLE hThread    = GetCurrentThread();
-        BOOL result = pSymInitialize(
-                          hProcess,
-                          nullptr,
-                          TRUE
-                      );
+        pSymInitialize(
+            hProcess,
+            nullptr,
+            TRUE
+        );
         CONTEXT             context = *(ex->ContextRecord);
         STACKFRAME64        stack= {0};
 #ifdef _M_IX86
@@ -607,22 +608,22 @@ namespace {
         DWORD64 displacement   = 0;
         int beyond_main=-1; // emergency exit, see below
         for (ULONG frame = 0; ; frame++) {
-            result = pStackWalk64
-                     (
+            BOOL result = pStackWalk64
+                          (
 #ifdef _M_IX86
-                         IMAGE_FILE_MACHINE_I386,
+                              IMAGE_FILE_MACHINE_I386,
 #else
-                         IMAGE_FILE_MACHINE_AMD64,
+                              IMAGE_FILE_MACHINE_AMD64,
 #endif
-                         hProcess,
-                         hThread,
-                         &stack,
-                         &context,
-                         nullptr,
-                         pSymFunctionTableAccess64,
-                         pSymGetModuleBase64,
-                         nullptr
-                     );
+                              hProcess,
+                              hThread,
+                              &stack,
+                              &context,
+                              nullptr,
+                              pSymFunctionTableAccess64,
+                              pSymGetModuleBase64,
+                              nullptr
+                          );
             if (!result)  // official end...
                 break;
             pSymGetSymFromAddr64(hProcess, (ULONG64)stack.AddrPC.Offset, &displacement, &symbol);
@@ -913,11 +914,15 @@ int CppCheckExecutor::check_internal(CppCheck& cppcheck, int /*argc*/, const cha
 
         if (settings.jointSuppressionReport) {
             for (std::map<std::string, std::size_t>::const_iterator i = _files.begin(); i != _files.end(); ++i) {
-                reportUnmatchedSuppressions(settings.nomsg.getUnmatchedLocalSuppressions(i->first, enableUnusedFunctionCheck));
+                const bool err = reportUnmatchedSuppressions(settings.nomsg.getUnmatchedLocalSuppressions(i->first, enableUnusedFunctionCheck));
+                if (err && returnValue == 0)
+                    returnValue = settings.exitCode;
             }
         }
 
-        reportUnmatchedSuppressions(settings.nomsg.getUnmatchedGlobalSuppressions(enableUnusedFunctionCheck));
+        const bool err = reportUnmatchedSuppressions(settings.nomsg.getUnmatchedGlobalSuppressions(enableUnusedFunctionCheck));
+        if (err && returnValue == 0)
+            returnValue = settings.exitCode;
     }
 
     if (!settings.checkConfiguration) {

@@ -1,6 +1,6 @@
 /*
  * Cppcheck - A tool for static C/C++ code analysis
- * Copyright (C) 2007-2017 Cppcheck team.
+ * Copyright (C) 2007-2018 Cppcheck team.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -58,7 +58,7 @@ public:
     }
 
     /** @brief Run checks against the normal token list */
-    void runChecks(const Tokenizer *tokenizer, const Settings *settings, ErrorLogger *errorLogger) override {
+    void runChecks(const Tokenizer *tokenizer, const Settings *settings, ErrorLogger *errorLogger) OVERRIDE {
         CheckFunctions checkFunctions(tokenizer, settings, errorLogger);
 
         // Checks
@@ -69,7 +69,7 @@ public:
     }
 
     /** @brief Run checks against the simplified token list */
-    void runSimplifiedChecks(const Tokenizer *tokenizer, const Settings *settings, ErrorLogger *errorLogger) override {
+    void runSimplifiedChecks(const Tokenizer *tokenizer, const Settings *settings, ErrorLogger *errorLogger) OVERRIDE {
         CheckFunctions checkFunctions(tokenizer, settings, errorLogger);
 
         checkFunctions.checkProhibitedFunctions();
@@ -110,6 +110,7 @@ public:
 private:
     void invalidFunctionArgError(const Token *tok, const std::string &functionName, int argnr, const ValueFlow::Value *invalidValue, const std::string &validstr);
     void invalidFunctionArgBoolError(const Token *tok, const std::string &functionName, int argnr);
+    void invalidFunctionArgStrError(const Token *tok, const std::string &functionName, unsigned int argnr);
     void ignoredReturnValueError(const Token* tok, const std::string& function);
     void mathfunctionCallWarning(const Token *tok, const unsigned int numParam = 1);
     void mathfunctionCallWarning(const Token *tok, const std::string& oldexp, const std::string& newexp);
@@ -117,7 +118,7 @@ private:
     void memsetFloatError(const Token *tok, const std::string &var_value);
     void memsetValueOutOfRangeError(const Token *tok, const std::string &value);
 
-    void getErrorMessages(ErrorLogger *errorLogger, const Settings *settings) const override {
+    void getErrorMessages(ErrorLogger *errorLogger, const Settings *settings) const OVERRIDE {
         CheckFunctions c(nullptr, settings, errorLogger);
 
         for (std::map<std::string, Library::WarnInfo>::const_iterator i = settings->library.functionwarn.cbegin(); i != settings->library.functionwarn.cend(); ++i) {
@@ -126,6 +127,7 @@ private:
 
         c.invalidFunctionArgError(nullptr, "func_name", 1, nullptr,"1:4");
         c.invalidFunctionArgBoolError(nullptr, "func_name", 1);
+        c.invalidFunctionArgStrError(nullptr, "func_name", 1);
         c.ignoredReturnValueError(nullptr, "malloc");
         c.mathfunctionCallWarning(nullptr);
         c.mathfunctionCallWarning(nullptr, "1 - erf(x)", "erfc(x)");
@@ -138,7 +140,7 @@ private:
         return "Check function usage";
     }
 
-    std::string classInfo() const override {
+    std::string classInfo() const OVERRIDE {
         return "Check function usage:\n"
                "- return value of certain functions not used\n"
                "- invalid input values for functions\n"

@@ -1,6 +1,6 @@
 /*
  * Cppcheck - A tool for static C/C++ code analysis
- * Copyright (C) 2007-2017 Cppcheck team.
+ * Copyright (C) 2007-2018 Cppcheck team.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -35,7 +35,7 @@ private:
     const ErrorLogger::ErrorMessage::FileLocation fooCpp5;
     const ErrorLogger::ErrorMessage::FileLocation barCpp8;
 
-    void run() override {
+    void run() OVERRIDE {
         TEST_CASE(PatternSearchReplace);
         TEST_CASE(FileLocationDefaults);
         TEST_CASE(FileLocationSetFile);
@@ -197,6 +197,7 @@ private:
 
     void ToXmlV2Locations() const {
         std::list<ErrorLogger::ErrorMessage::FileLocation> locs = { fooCpp5, barCpp8 };
+        locs.back().setinfo("ä");
         ErrorMessage msg(locs, emptyString, Severity::error, "Programming error.\nVerbose error", "errorId", false);
         std::string header("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<results version=\"2\">\n");
         header += "    <cppcheck version=\"";
@@ -206,7 +207,7 @@ private:
         ASSERT_EQUALS("    </errors>\n</results>", ErrorLogger::ErrorMessage::getXMLFooter());
         std::string message("        <error id=\"errorId\" severity=\"error\"");
         message += " msg=\"Programming error.\" verbose=\"Verbose error\">\n";
-        message += "            <location file=\"bar.cpp\" line=\"8\"/>\n";
+        message += "            <location file=\"bar.cpp\" line=\"8\" info=\"\\303\\244\"/>\n";
         message += "            <location file=\"foo.cpp\" line=\"5\"/>\n        </error>";
         ASSERT_EQUALS(message, msg.toXML());
     }
@@ -301,7 +302,7 @@ private:
         errout.str("");
         suppressions.clear();
         suppressions.emplace_back("abc", "a.c", 10U);
-        suppressions.emplace_back("unmatchedSuppression", "*", 0U);
+        suppressions.emplace_back("unmatchedSuppression", "*", Suppressions::Suppression::NO_LINE);
         reportUnmatchedSuppressions(suppressions);
         ASSERT_EQUALS("", errout.str());
 
@@ -309,7 +310,7 @@ private:
         errout.str("");
         suppressions.clear();
         suppressions.emplace_back("abc", "a.c", 10U);
-        suppressions.emplace_back("unmatchedSuppression", "a.c", 0U);
+        suppressions.emplace_back("unmatchedSuppression", "a.c", Suppressions::Suppression::NO_LINE);
         reportUnmatchedSuppressions(suppressions);
         ASSERT_EQUALS("", errout.str());
 
@@ -325,7 +326,7 @@ private:
         errout.str("");
         suppressions.clear();
         suppressions.emplace_back("abc", "a.c", 10U);
-        suppressions.emplace_back("unmatchedSuppression", "b.c", 0U);
+        suppressions.emplace_back("unmatchedSuppression", "b.c", Suppressions::Suppression::NO_LINE);
         reportUnmatchedSuppressions(suppressions);
         ASSERT_EQUALS("[a.c:10]: (information) Unmatched suppression: abc\n", errout.str());
 

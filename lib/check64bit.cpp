@@ -1,6 +1,6 @@
 /*
  * Cppcheck - A tool for static C/C++ code analysis
- * Copyright (C) 2007-2017 Cppcheck team.
+ * Copyright (C) 2007-2018 Cppcheck team.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -43,10 +43,10 @@ namespace {
 
 void Check64BitPortability::pointerassignment()
 {
-    if (!_settings->isEnabled(Settings::PORTABILITY))
+    if (!mSettings->isEnabled(Settings::PORTABILITY))
         return;
 
-    const SymbolDatabase *symbolDatabase = _tokenizer->getSymbolDatabase();
+    const SymbolDatabase *symbolDatabase = mTokenizer->getSymbolDatabase();
 
     // Check return values
     for (const Scope * scope : symbolDatabase->functionScopes) {

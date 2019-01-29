@@ -1,6 +1,6 @@
 /*
  * Cppcheck - A tool for static C/C++ code analysis
- * Copyright (C) 2007-2017 Cppcheck team.
+ * Copyright (C) 2007-2018 Cppcheck team.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -34,7 +34,7 @@ public:
     }
 
 private:
-    void run() override {
+    void run() OVERRIDE {
         TEST_CASE(varid1);
         TEST_CASE(varid2);
         TEST_CASE(varid3);
@@ -129,6 +129,7 @@ private:
         TEST_CASE(varid_in_class21);    // #7788
         TEST_CASE(varid_namespace_1);   // #7272
         TEST_CASE(varid_namespace_2);   // #7000
+        TEST_CASE(varid_namespace_3);   // #8627
         TEST_CASE(varid_initList);
         TEST_CASE(varid_initListWithBaseTemplate);
         TEST_CASE(varid_initListWithScope);
@@ -143,6 +144,7 @@ private:
         TEST_CASE(varid_templateArray);
         TEST_CASE(varid_templateParameter); // #7046 set varid for "X":  std::array<int,X> Y;
         TEST_CASE(varid_templateUsing); // #5781 #7273
+        TEST_CASE(varid_not_template_in_condition); // #7988
         TEST_CASE(varid_cppcast); // #6190
         TEST_CASE(varid_variadicFunc);
         TEST_CASE(varid_typename); // #4644
@@ -157,6 +159,7 @@ private:
         TEST_CASE(varid_rangeBasedFor);
         TEST_CASE(varid_structinit); // #6406
         TEST_CASE(varid_arrayinit); // #7579
+        TEST_CASE(varid_lambda_arg);
 
         TEST_CASE(varidclass1);
         TEST_CASE(varidclass2);
@@ -184,6 +187,8 @@ private:
         TEST_CASE(usingNamespace1);
         TEST_CASE(usingNamespace2);
         TEST_CASE(usingNamespace3);
+
+        TEST_CASE(setVarIdStructMembers1);
     }
 
     std::string tokenize(const char code[], bool simplify = false, const char filename[] = "test.cpp") {
@@ -1513,21 +1518,14 @@ private:
                             "void Foo::Clone(FooBase& g) {\n"
                             "    ((FooBase)g)->m_bar = m_bar;\n"
                             "}";
-        TODO_ASSERT_EQUALS("1: class Foo : public FooBase {\n"
-                           "2: void Clone ( FooBase & g@1 ) ;\n"
-                           "3: short m_bar@2 ;\n"
-                           "4: } ;\n"
-                           "5: void Foo :: Clone ( FooBase & g@3 ) {\n"
-                           "6: ( ( FooBase ) g@3 ) . m_bar@4 = m_bar@2 ;\n"
-                           "7: }\n",
-                           "1: class Foo : public FooBase {\n"
-                           "2: void Clone ( FooBase & g@1 ) ;\n"
-                           "3: short m_bar@2 ;\n"
-                           "4: } ;\n"
-                           "5: void Foo :: Clone ( FooBase & g@3 ) {\n"
-                           "6: ( ( FooBase ) g@3 ) . m_bar = m_bar@2 ;\n"
-                           "7: }\n",
-                           tokenize(code));
+        ASSERT_EQUALS("1: class Foo : public FooBase {\n"
+                      "2: void Clone ( FooBase & g@1 ) ;\n"
+                      "3: short m_bar@2 ;\n"
+                      "4: } ;\n"
+                      "5: void Foo :: Clone ( FooBase & g@3 ) {\n"
+                      "6: ( ( FooBase ) g@3 ) . m_bar@4 = m_bar@2 ;\n"
+                      "7: }\n",
+                      tokenize(code));
     }
 
     void varid_in_class11() { // #4277 - anonymous union
@@ -1828,6 +1826,38 @@ private:
         ASSERT(actual.find("X@2 = 0") != std::string::npos);
     }
 
+    std::string getLine(const std::string &code, int lineNumber) {
+        std::string nr = MathLib::toString(lineNumber);
+        const std::string::size_type pos1 = code.find('\n' + nr + ": ");
+        if (pos1 == std::string::npos)
+            return "";
+        const std::string::size_type pos2 = code.find('\n', pos1+1);
+        if (pos2 == std::string::npos)
+            return "";
+        return code.substr(pos1+1, pos2-pos1-1);
+    }
+
+    void varid_namespace_3() { // #8627
+        const char code[] = "namespace foo {\n"
+                            "struct Bar {\n"
+                            "  explicit Bar(int type);\n"
+                            "  void f();\n"
+                            "  int type;\n"  // <- Same varid here ...
+                            "};\n"
+                            "\n"
+                            "Bar::Bar(int type) : type(type) {}\n"
+                            "\n"
+                            "void Bar::f() {\n"
+                            "  type = 0;\n"  // <- ... and here
+                            "}\n"
+                            "}";
+
+        const std::string actual = tokenize(code, false, "test.cpp");
+
+        ASSERT_EQUALS("5: int type@2 ;", getLine(actual,5));
+        ASSERT_EQUALS("11: type@2 = 0 ;", getLine(actual,11));
+    }
+
     void varid_initList() {
         const char code1[] = "class A {\n"
                              "  A() : x(0) {}\n"
@@ -2120,6 +2150,20 @@ private:
                            tokenize(code));
     }
 
+    void varid_not_template_in_condition() {
+        const char code1[] = "void f() { if (x<a||x>b); }";
+        ASSERT_EQUALS("1: void f ( ) { if ( x < a || x > b ) { ; } }\n", tokenize(code1));
+
+        const char code2[] = "void f() { if (1+x<a||x>b); }";
+        ASSERT_EQUALS("1: void f ( ) { if ( 1 + x < a || x > b ) { ; } }\n", tokenize(code2));
+
+        const char code3[] = "void f() { if (x<a||x>b+1); }";
+        ASSERT_EQUALS("1: void f ( ) { if ( x < a || x > b + 1 ) { ; } }\n", tokenize(code3));
+
+        const char code4[] = "void f() { if ((x==13) && (x<a||x>b)); }";
+        ASSERT_EQUALS("1: void f ( ) { if ( ( x == 13 ) && ( x < a || x > b ) ) { ; } }\n", tokenize(code4));
+    }
+
     void varid_cppcast() {
         ASSERT_EQUALS("1: const_cast < int * > ( code ) [ 0 ] = 0 ;\n",
                       tokenize("const_cast<int *>(code)[0] = 0;"));
@@ -2398,6 +2442,25 @@ private:
 
     void varid_arrayinit() { // #7579 - no variable declaration in rhs
         ASSERT_EQUALS("1: void foo ( int * a@1 ) { int b@2 [ 1 ] = { x * a@1 [ 0 ] } ; }\n", tokenize("void foo(int*a) { int b[] = { x*a[0] }; }"));
+    }
+
+    void varid_lambda_arg() {
+        // #8664
+        const char code1[] = "static void func(int ec) {\n"
+                             "    func2([](const std::error_code& ec) { return ec; });\n"
+                             "}";
+        const char exp1[] = "1: static void func ( int ec@1 ) {\n"
+                            "2: func2 ( [ ] ( const std :: error_code & ec@2 ) { return ec@2 ; } ) ;\n"
+                            "3: }\n";
+        ASSERT_EQUALS(exp1, tokenize(code1));
+
+        const char code2[] = "static void func(int ec) {\n"
+                             "    func2([](int x, const std::error_code& ec) { return x + ec; });\n"
+                             "}";
+        const char exp2[] = "1: static void func ( int ec@1 ) {\n"
+                            "2: func2 ( [ ] ( int x@2 , const std :: error_code & ec@3 ) { return x@2 + ec@3 ; } ) ;\n"
+                            "3: }\n";
+        ASSERT_EQUALS(exp2, tokenize(code2));
     }
 
     void varidclass1() {
@@ -2923,6 +2986,20 @@ private:
                                 "9: using namespace A :: B ;\n"
                                 "10: C :: C ( ) : m@1 ( 42 ) { }\n";
 
+        ASSERT_EQUALS(expected, tokenize(code));
+    }
+
+    void setVarIdStructMembers1() {
+        const char code[] = "void f(Foo foo)\n"
+                            "{\n"
+                            "    foo.size = 0;\n"
+                            "    return ((uint8_t)(foo).size);\n"
+                            "}";
+        const char expected[] = "1: void f ( Foo foo@1 )\n"
+                                "2: {\n"
+                                "3: foo@1 . size@2 = 0 ;\n"
+                                "4: return ( ( uint8_t ) ( foo@1 ) . size@2 ) ;\n"
+                                "5: }\n";
         ASSERT_EQUALS(expected, tokenize(code));
     }
 };

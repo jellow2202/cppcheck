@@ -1,6 +1,6 @@
 /*
  * Cppcheck - A tool for static C/C++ code analysis
- * Copyright (C) 2007-2017 Cppcheck team.
+ * Copyright (C) 2007-2018 Cppcheck team.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -45,6 +45,18 @@ static bool isValidGlobPattern(const std::string &pattern)
     return true;
 }
 
+static bool isAcceptedErrorIdChar(char c)
+{
+    switch (c) {
+    case '_':
+    case '-':
+    case '.':
+        return true;
+    default:
+        return std::isalnum(c);
+    }
+}
+
 std::string Suppressions::parseFile(std::istream &istr)
 {
     // Change '\r' to '\n' in the istr
@@ -62,6 +74,8 @@ std::string Suppressions::parseFile(std::istream &istr)
             continue;
 
         // Skip comments
+        if (line.length() > 1 && line[0] == '#')
+            continue;
         if (line.length() >= 2 && line[0] == '/' && line[1] == '/')
             continue;
 
@@ -132,10 +146,10 @@ std::string Suppressions::addSuppressionLine(const std::string &line)
                     std::istringstream istr1(suppression.fileName.substr(pos+1));
                     istr1 >> suppression.lineNumber;
                 } catch (...) {
-                    suppression.lineNumber = 0;
+                    suppression.lineNumber = Suppressions::Suppression::NO_LINE;
                 }
 
-                if (suppression.lineNumber > 0) {
+                if (suppression.lineNumber != Suppressions::Suppression::NO_LINE) {
                     suppression.fileName.erase(pos);
                 }
             }
@@ -155,7 +169,7 @@ std::string Suppressions::addSuppression(const Suppressions::Suppression &suppre
     }
     if (suppression.errorId != "*") {
         for (std::string::size_type pos = 0; pos < suppression.errorId.length(); ++pos) {
-            if (suppression.errorId[pos] < 0 || (!std::isalnum(suppression.errorId[pos]) && suppression.errorId[pos] != '_')) {
+            if (suppression.errorId[pos] < 0 || !isAcceptedErrorIdChar(suppression.errorId[pos])) {
                 return "Failed to add suppression. Invalid id \"" + suppression.errorId + "\"";
             }
             if (pos == 0 && std::isdigit(suppression.errorId[pos])) {
@@ -169,14 +183,14 @@ std::string Suppressions::addSuppression(const Suppressions::Suppression &suppre
     if (!isValidGlobPattern(suppression.fileName))
         return "Failed to add suppression. Invalid glob pattern '" + suppression.fileName + "'.";
 
-    _suppressions.push_back(suppression);
+    mSuppressions.push_back(suppression);
 
     return "";
 }
 
 void Suppressions::ErrorMessage::setFileName(const std::string &s)
 {
-    _fileName = Path::simplifyPath(s);
+    mFileName = Path::simplifyPath(s);
 }
 
 bool Suppressions::Suppression::parseComment(std::string comment, std::string *errorMessage)
@@ -184,8 +198,8 @@ bool Suppressions::Suppression::parseComment(std::string comment, std::string *e
     if (comment.size() < 2)
         return false;
 
-    if (comment.find(";") != std::string::npos)
-        comment.erase(comment.find(";"));
+    if (comment.find(';') != std::string::npos)
+        comment.erase(comment.find(';'));
 
     if (comment.find("//", 2) != std::string::npos)
         comment.erase(comment.find("//",2));
@@ -205,6 +219,8 @@ bool Suppressions::Suppression::parseComment(std::string comment, std::string *e
         iss >> word;
         if (!iss)
             break;
+        if (word.find_first_not_of("+-*/%#;") == std::string::npos)
+            break;
         if (word.compare(0,11,"symbolName=")==0)
             symbolName = word.substr(11);
         else if (errorMessage && errorMessage->empty())
@@ -219,7 +235,7 @@ bool Suppressions::Suppression::isSuppressed(const Suppressions::ErrorMessage &e
         return false;
     if (!fileName.empty() && !matchglob(fileName, errmsg.getFileName()))
         return false;
-    if (lineNumber > 0 && lineNumber != errmsg.lineNumber)
+    if (lineNumber != NO_LINE && lineNumber != errmsg.lineNumber)
         return false;
     if (!symbolName.empty()) {
         for (std::string::size_type pos = 0; pos < errmsg.symbolNames.size();) {
@@ -255,7 +271,7 @@ std::string Suppressions::Suppression::getText() const
         ret = errorId;
     if (!fileName.empty())
         ret += " fileName=" + fileName;
-    if (lineNumber > 0)
+    if (lineNumber != NO_LINE)
         ret += " lineNumber=" + MathLib::toString(lineNumber);
     if (!symbolName.empty())
         ret += " symbolName=" + symbolName;
@@ -267,8 +283,7 @@ std::string Suppressions::Suppression::getText() const
 bool Suppressions::isSuppressed(const Suppressions::ErrorMessage &errmsg)
 {
     const bool unmatchedSuppression(errmsg.errorId == "unmatchedSuppression");
-    for (std::list<Suppression>::iterator it = _suppressions.begin(); it != _suppressions.end(); ++it) {
-        Suppression &s = *it;
+    for (Suppression &s : mSuppressions) {
         if (unmatchedSuppression && s.errorId != errmsg.errorId)
             continue;
         if (s.isMatch(errmsg))
@@ -280,8 +295,7 @@ bool Suppressions::isSuppressed(const Suppressions::ErrorMessage &errmsg)
 bool Suppressions::isSuppressedLocal(const Suppressions::ErrorMessage &errmsg)
 {
     const bool unmatchedSuppression(errmsg.errorId == "unmatchedSuppression");
-    for (std::list<Suppression>::iterator it = _suppressions.begin(); it != _suppressions.end(); ++it) {
-        Suppression &s = *it;
+    for (Suppression &s : mSuppressions) {
         if (!s.isLocal())
             continue;
         if (unmatchedSuppression && s.errorId != errmsg.errorId)
@@ -295,12 +309,12 @@ bool Suppressions::isSuppressedLocal(const Suppressions::ErrorMessage &errmsg)
 void Suppressions::dump(std::ostream & out)
 {
     out << "  <suppressions>" << std::endl;
-    for (const Suppression &suppression : _suppressions) {
+    for (const Suppression &suppression : mSuppressions) {
         out << "    <suppression";
         out << " errorId=\"" << ErrorLogger::toxml(suppression.errorId) << '"';
         if (!suppression.fileName.empty())
             out << " fileName=\"" << ErrorLogger::toxml(suppression.fileName) << '"';
-        if (suppression.lineNumber > 0)
+        if (suppression.lineNumber != Suppression::NO_LINE)
             out << " lineNumber=\"" << suppression.lineNumber << '"';
         if (!suppression.symbolName.empty())
             out << " symbolName=\"" << ErrorLogger::toxml(suppression.symbolName) << '\"';
@@ -314,8 +328,7 @@ void Suppressions::dump(std::ostream & out)
 std::list<Suppressions::Suppression> Suppressions::getUnmatchedLocalSuppressions(const std::string &file, const bool unusedFunctionChecking) const
 {
     std::list<Suppression> result;
-    for (std::list<Suppression>::const_iterator it = _suppressions.begin(); it != _suppressions.end(); ++it) {
-        const Suppression &s = *it;
+    for (const Suppression &s : mSuppressions) {
         if (s.matched)
             continue;
         if (!unusedFunctionChecking && s.errorId == "unusedFunction")
@@ -330,8 +343,7 @@ std::list<Suppressions::Suppression> Suppressions::getUnmatchedLocalSuppressions
 std::list<Suppressions::Suppression> Suppressions::getUnmatchedGlobalSuppressions(const bool unusedFunctionChecking) const
 {
     std::list<Suppression> result;
-    for (std::list<Suppression>::const_iterator it = _suppressions.begin(); it != _suppressions.end(); ++it) {
-        const Suppression &s = *it;
+    for (const Suppression &s : mSuppressions) {
         if (s.matched)
             continue;
         if (!unusedFunctionChecking && s.errorId == "unusedFunction")

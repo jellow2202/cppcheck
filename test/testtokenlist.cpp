@@ -1,6 +1,6 @@
 /*
  * Cppcheck - A tool for static C/C++ code analysis
- * Copyright (C) 2007-2017 Cppcheck team.
+ * Copyright (C) 2007-2018 Cppcheck team.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -32,7 +32,7 @@ public:
 private:
     Settings settings;
 
-    void run() override {
+    void run() OVERRIDE {
         TEST_CASE(testaddtoken1);
         TEST_CASE(testaddtoken2);
         TEST_CASE(inc);

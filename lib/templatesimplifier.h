@@ -1,6 +1,6 @@
 /*
  * Cppcheck - A tool for static C/C++ code analysis
- * Copyright (C) 2007-2017 Cppcheck team.
+ * Copyright (C) 2007-2018 Cppcheck team.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -26,6 +26,7 @@
 
 #include <ctime>
 #include <list>
+#include <map>
 #include <set>
 #include <string>
 #include <vector>
@@ -33,30 +34,28 @@
 class ErrorLogger;
 class Settings;
 class Token;
+class Tokenizer;
 class TokenList;
-
 
 /// @addtogroup Core
 /// @{
 
 /** @brief Simplify templates from the preprocessed and partially simplified code. */
 class CPPCHECKLIB TemplateSimplifier {
-    TemplateSimplifier();
-    ~TemplateSimplifier();
 public:
+    explicit TemplateSimplifier(Tokenizer *tokenizer);
+    ~TemplateSimplifier();
 
     /**
      * Used after simplifyTemplates to perform a little cleanup.
      * Sometimes the simplifyTemplates isn't fully successful and then
      * there are function calls etc with "wrong" syntax.
      */
-    static void cleanupAfterSimplify(Token *tokens);
+    void cleanupAfterSimplify();
 
     /**
-     * \param[in] tokens token list
-     * @return false if there are no syntax errors or true
      */
-    static void checkComplicatedSyntaxErrorsInTemplates(const Token *tokens);
+    void checkComplicatedSyntaxErrorsInTemplates();
 
     /**
      * is the token pointing at a template parameters block
@@ -67,48 +66,115 @@ public:
     static unsigned int templateParameters(const Token *tok);
 
     /**
-     * Expand specialized templates : "template<>.."
-     * @return names of expanded templates
-     */
-    static std::set<std::string> expandSpecialized(Token *tokens);
-
-    /**
      * Token and its full scopename
      */
     struct TokenAndName {
-        TokenAndName(Token *tok, const std::string &s, const std::string &n) : token(tok), scope(s), name(n) {}
+        /**
+         * Constructor used for instantiations.
+         * \param tok template instantiation name token "name<...>"
+         * \param scope full qualification of template
+         */
+        TokenAndName(Token *tok, const std::string &s);
+        /**
+         * Constructor used for declarations.
+         * \param tok template declaration token "template < ... >"
+         * \param scope full qualification of template
+         * \param nt template name token "template < ... > class name"
+         * \param pe template parameter end token ">"
+         */
+        TokenAndName(Token *tok, const std::string &s, const Token *nt, const Token *pe);
+        TokenAndName(const TokenAndName& otherTok);
+        ~TokenAndName();
+
+        bool operator == (const TokenAndName & rhs) const {
+            return token == rhs.token && scope == rhs.scope && name == rhs.name && fullName == rhs.fullName &&
+                   nameToken == rhs.nameToken && paramEnd == rhs.paramEnd && flags == rhs.flags;
+        }
         Token *token;
         std::string scope;
         std::string name;
+        std::string fullName;
+        const Token *nameToken;
+        const Token *paramEnd;
+        unsigned int flags;
+
+        enum {
+            fIsClass                 = (1 << 0), // class template
+            fIsFunction              = (1 << 1), // function template
+            fIsVariable              = (1 << 2), // variable template
+            fIsAlias                 = (1 << 3), // alias template
+            fIsSpecialization        = (1 << 4), // user specialized template
+            fIsPartialSpecialization = (1 << 5), // user partial specialized template
+            fIsForwardDeclaration    = (1 << 6), // forward declaration
+        };
+
+        bool isClass() const {
+            return getFlag(fIsClass);
+        }
+        void isClass(bool state) {
+            setFlag(fIsClass, state);
+        }
+
+        bool isFunction() const {
+            return getFlag(fIsFunction);
+        }
+        void isFunction(bool state) {
+            setFlag(fIsFunction, state);
+        }
+
+        bool isVariable() const {
+            return getFlag(fIsVariable);
+        }
+        void isVariable(bool state) {
+            setFlag(fIsVariable, state);
+        }
+
+        bool isAlias() const {
+            return getFlag(fIsAlias);
+        }
+        void isAlias(bool state) {
+            setFlag(fIsAlias, state);
+        }
+
+        bool isSpecialization() const {
+            return getFlag(fIsSpecialization);
+        }
+        void isSpecialization(bool state) {
+            setFlag(fIsSpecialization, state);
+        }
+
+        bool isPartialSpecialization() const {
+            return getFlag(fIsPartialSpecialization);
+        }
+        void isPartialSpecialization(bool state) {
+            setFlag(fIsPartialSpecialization, state);
+        }
+
+        bool isForwardDeclaration() const {
+            return getFlag(fIsForwardDeclaration);
+        }
+        void isForwardDeclaration(bool state) {
+            setFlag(fIsForwardDeclaration, state);
+        }
+
+        /**
+         * Get specified flag state.
+         * @param flag flag to get state of
+         * @return true if flag set or false in flag not set
+         */
+        bool getFlag(unsigned int flag) const {
+            return ((flags & flag) != 0);
+        }
+
+        /**
+         * Set specified flag state.
+         * @param flag flag to set state
+         * @param state new state of flag
+         */
+        void setFlag(unsigned int flag, bool state) {
+            flags = state ? flags | flag : flags & ~flag;
+        }
     };
-
-    /**
-     * Get template declarations
-     * @return list of template declarations
-     */
-    static std::list<TokenAndName> getTemplateDeclarations(Token *tokens, bool &codeWithTemplates);
-
-    /**
-     * Get template instantiations
-     * @param tokens start of token list
-     * @param declarations template declarations, so names can be matched
-     * @return list of template instantiations
-     */
-    static std::list<TokenAndName> getTemplateInstantiations(Token *tokens, const std::list<TokenAndName> &declarations);
-
-    /**
-     * simplify template instantiations (use default argument values)
-     * @param templates list of template declarations
-     * @param templateInstantiations list of template instantiations
-     */
-    static void useDefaultArgumentValues(const std::list<TokenAndName> &templates,
-                                         std::list<TokenAndName> *templateInstantiations);
-
-    /**
-     * simplify template aliases
-     * @param templateInstantiations pointer to list of template instantiations
-     */
-    static void simplifyTemplateAliases(std::list<TokenAndName> *templateInstantiations);
 
     /**
      * Match template declaration/instantiation
@@ -128,23 +194,140 @@ public:
     static int getTemplateNamePosition(const Token *tok);
 
     /**
+     * Get function template name position
+     * @param tok The ">" token e.g. before "class"
+     * @param namepos return offset to name
+     * @return true if name found, false if not
+     * */
+    static bool getTemplateNamePositionTemplateFunction(const Token *tok, int &namepos);
+
+    /**
+     * Get variable template name position
+     * @param tok The ">" token
+     * @param namepos return offset to name
+     * @return true if name found, false if not
+     * */
+    static bool getTemplateNamePositionTemplateVariable(const Token *tok, int &namepos);
+
+    /**
+     * Simplify templates
+     * @param maxtime time when the simplification should be stopped
+     * @param codeWithTemplates output parameter that is set if code contains templates
+     */
+    void simplifyTemplates(
+        const std::time_t maxtime,
+        bool &codeWithTemplates);
+
+    /**
+     * Simplify constant calculations such as "1+2" => "3"
+     * @param tok start token
+     * @return true if modifications to token-list are done.
+     *         false if no modifications are done.
+     */
+    static bool simplifyNumericCalculations(Token *tok);
+
+    /**
+     * Simplify constant calculations such as "1+2" => "3".
+     * This also performs simple cleanup of parentheses etc.
+     * @return true if modifications to token-list are done.
+     *         false if no modifications are done.
+     */
+    bool simplifyCalculations(Token* frontToken = nullptr, Token *backToken = nullptr);
+
+private:
+    /**
+     * Get template declarations
+     * @return true if code has templates.
+     */
+    bool getTemplateDeclarations();
+
+    /**
+     * Get template instantiations
+     */
+    void getTemplateInstantiations();
+
+    /**
+     * Fix forward declared default argument values by copying them
+     * when they are not present in the declaration.
+     */
+    void fixForwardDeclaredDefaultArgumentValues();
+
+    /**
+     * simplify template instantiations (use default argument values)
+     */
+    void useDefaultArgumentValues();
+
+    /**
+     * Try to locate a matching declaration for each user defined
+     * specialization.
+     */
+    void getSpecializations();
+
+    /**
+     * Try to locate a matching declaration for each user defined
+     * partial specialization.
+     */
+    void getPartialSpecializations();
+
+    /**
+     * simplify template aliases
+     */
+    void simplifyTemplateAliases();
+
+    /**
+     * Simplify templates : expand all instantiations for a template
+     * @todo It seems that inner templates should be instantiated recursively
+     * @param templateDeclaration template declaration
+     * @param specializations template specializations (list each template name token)
+     * @param maxtime time when the simplification will stop
+     * @param expandedtemplates all templates that has been expanded so far. The full names are stored.
+     * @return true if the template was instantiated
+     */
+    bool simplifyTemplateInstantiations(
+        const TokenAndName &templateDeclaration,
+        const std::list<const Token *> &specializations,
+        const std::time_t maxtime,
+        std::set<std::string> &expandedtemplates);
+
+    /**
+     * Simplify templates : add namespace to template name
+     * @param templateDeclaration template declaration
+     * @param tok place to insert namespace
+     */
+    void addNamespace(const TokenAndName &templateDeclaration, const Token *tok);
+
+    /**
+     * Simplify templates : check if namespace already present
+     * @param templateDeclaration template declaration
+     * @param tok place to start looking for namespace
+     * @return true if namespace already present
+     */
+    static bool alreadyHasNamespace(const TokenAndName &templateDeclaration, const Token *tok);
+
+    /**
      * Expand a template. Create "expanded" class/function at end of tokenlist.
-     * @param tokenlist                         The tokenlist that is changed
-     * @param templateDeclarationToken          The template declaration token for the template that will be "expanded"
-     * @param fullName                          Full name of template
+     * @param templateDeclaration               Template declaration information
+     * @param templateInstantiation             Full name of template
      * @param typeParametersInDeclaration       The type parameters of the template
      * @param newName                           New name of class/function.
-     * @param typesUsedInTemplateInstantiation  Type parameters in instantiation
-     * @param templateInstantiations            List of template instantiations.
+     * @param copy                              copy or expand in place
      */
-    static void expandTemplate(
-        TokenList& tokenlist,
-        const Token *templateDeclarationToken,
-        const std::string &fullName,
+    void expandTemplate(
+        const TokenAndName &templateDeclaration,
+        const TokenAndName &templateInstantiation,
         const std::vector<const Token *> &typeParametersInDeclaration,
         const std::string &newName,
-        const std::vector<const Token *> &typesUsedInTemplateInstantiation,
-        std::list<TokenAndName> &templateInstantiations);
+        bool copy);
+
+    /**
+     * Replace all matching template usages  'Foo < int >' => 'Foo<int>'
+     * @param instantiation Template instantiation information.
+     * @param typeStringsUsedInTemplateInstantiation template parameters. list of token strings.
+     * @param newName The new type name
+     */
+    void replaceTemplateUsage(const TokenAndName &instantiation,
+                              const std::list<std::string> &typeStringsUsedInTemplateInstantiation,
+                              const std::string &newName);
 
     /**
      * @brief TemplateParametersInDeclaration
@@ -160,78 +343,6 @@ public:
         std::vector<const Token *> & typeParametersInDeclaration);
 
     /**
-     * Simplify templates : expand all instantiations for a template
-     * @todo It seems that inner templates should be instantiated recursively
-     * @param tokenlist token list
-     * @param errorlogger error logger
-     * @param _settings settings
-     * @param templateDeclaration template declaration
-     * @param specializations template specializations (list each template name token)
-     * @param maxtime time when the simplification will stop
-     * @param templateInstantiations a list of template usages (not necessarily just for this template)
-     * @param expandedtemplates all templates that has been expanded so far. The full names are stored.
-     * @return true if the template was instantiated
-     */
-    static bool simplifyTemplateInstantiations(
-        TokenList& tokenlist,
-        ErrorLogger* errorlogger,
-        const Settings *_settings,
-        const TokenAndName &templateDeclaration,
-        const std::list<const Token *> &specializations,
-        const std::time_t maxtime,
-        std::list<TokenAndName> &templateInstantiations,
-        std::set<std::string> &expandedtemplates);
-
-    /**
-     * Replace all matching template usages  'Foo < int >' => 'Foo<int>'
-     * @param instantiationToken Template instantiation token
-     * @param templateName full template name with scope info
-     * @param typeStringsUsedInTemplateInstantiation template parameters. list of token strings.
-     * @param newName The new type name
-     * @param typesUsedInTemplateInstantiation template instantiation parameters
-     * @param templateInstantiations All seen instantiations
-     */
-    static void replaceTemplateUsage(Token *const instantiationToken,
-                                     const std::string &templateName,
-                                     const std::list<std::string> &typeStringsUsedInTemplateInstantiation,
-                                     const std::string &newName,
-                                     const std::vector<const Token *> &typesUsedInTemplateInstantiation,
-                                     std::list<TokenAndName> &templateInstantiations);
-
-    /**
-     * Simplify templates
-     * @param tokenlist token list
-     * @param errorlogger error logger
-     * @param _settings settings
-     * @param maxtime time when the simplification should be stopped
-     * @param _codeWithTemplates output parameter that is set if code contains templates
-     */
-    static void simplifyTemplates(
-        TokenList& tokenlist,
-        ErrorLogger* errorlogger,
-        const Settings *_settings,
-        const std::time_t maxtime,
-        bool &_codeWithTemplates);
-
-    /**
-     * Simplify constant calculations such as "1+2" => "3"
-     * @param tok start token
-     * @return true if modifications to token-list are done.
-     *         false if no modifications are done.
-     */
-    static bool simplifyNumericCalculations(Token *tok);
-
-    /**
-     * Simplify constant calculations such as "1+2" => "3".
-     * This also performs simple cleanup of parentheses etc.
-     * @param _tokens start token
-     * @return true if modifications to token-list are done.
-     *         false if no modifications are done.
-     */
-    static bool simplifyCalculations(Token *_tokens);
-
-private:
-    /**
      * Remove a specific "template < ..." template class/function
      */
     static bool removeTemplate(Token *tok);
@@ -239,6 +350,54 @@ private:
     /** Syntax error */
     static void syntaxError(const Token *tok);
 
+    static bool matchSpecialization(
+        const Token *templateDeclarationNameToken,
+        const Token *templateInstantiationNameToken,
+        const std::list<const Token *> & specializations);
+
+    /*
+     * Same as Token::eraseTokens() but tries to fix up lists with pointers to the deleted tokens.
+     * @param begin Tokens after this will be erased.
+     * @param end Tokens before this will be erased.
+     */
+    static void eraseTokens(Token *begin, const Token *end);
+
+    /**
+     * Delete specified token without invalidating pointer to following token.
+     * tok will be invalidated.
+     * @param tok token to delete
+     */
+    static void deleteToken(Token *tok);
+
+    /**
+     * Get the new token name.
+     * @param tok2 name token
+     * @param &typeStringsUsedInTemplateInstantiation type strings use in template instantiation
+     * @return new token name
+     */
+    std::string getNewName(
+        Token *tok2,
+        std::list<std::string> &typeStringsUsedInTemplateInstantiation);
+
+    void printOut(
+        const TokenAndName &tokenAndName,
+        const std::string &indent = "    ") const;
+    void printOut(const std::string &text = "") const;
+
+    TokenList &mTokenList;
+    const Settings *mSettings;
+    ErrorLogger *mErrorLogger;
+
+    std::list<TokenAndName> mTemplateDeclarations;
+    std::list<TokenAndName> mTemplateForwardDeclarations;
+    std::map<Token *, Token *> mTemplateForwardDeclarationsMap;
+    std::map<Token *, Token *> mTemplateSpecializationMap;
+    std::map<Token *, Token *> mTemplatePartialSpecializationMap;
+    std::list<TokenAndName> mTemplateInstantiations;
+    std::list<TokenAndName> mInstantiatedTemplates;
+    std::list<TokenAndName> mMemberFunctionsToDelete;
+    std::vector<TokenAndName> mExplicitInstantiationsToDelete;
+    std::vector<TokenAndName> mTypesUsedInTemplateInstantiation;
 };
 
 /// @}

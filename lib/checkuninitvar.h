@@ -24,6 +24,7 @@
 
 #include "check.h"
 #include "config.h"
+#include "ctu.h"
 
 #include <set>
 #include <string>
@@ -60,7 +61,7 @@ public:
     }
 
     /** @brief Run checks against the simplified token list */
-    void runSimplifiedChecks(const Tokenizer *tokenizer, const Settings *settings, ErrorLogger *errorLogger) override {
+    void runSimplifiedChecks(const Tokenizer *tokenizer, const Settings *settings, ErrorLogger *errorLogger) OVERRIDE {
         CheckUninitVar checkUninitVar(tokenizer, settings, errorLogger);
         checkUninitVar.check();
         checkUninitVar.deadPointer();
@@ -88,6 +89,24 @@ public:
     /** ValueFlow-based checking for uninitialized variables */
     void valueFlowUninit();
 
+    /* data for multifile checking */
+    class MyFileInfo : public Check::FileInfo {
+    public:
+        /** function arguments that data are unconditionally read */
+        std::list<CTU::FileInfo::UnsafeUsage> unsafeUsage;
+
+        /** Convert MyFileInfo data into xml string */
+        std::string toString() const OVERRIDE;
+    };
+
+    /** @brief Parse current TU and extract file info */
+    Check::FileInfo *getFileInfo(const Tokenizer *tokenizer, const Settings *settings) const OVERRIDE;
+
+    Check::FileInfo * loadFileInfoFromXml(const tinyxml2::XMLElement *xmlElement) const OVERRIDE;
+
+    /** @brief Analyse all file infos for all TU */
+    bool analyseWholeProgram(const CTU::FileInfo *ctu, const std::list<Check::FileInfo*> &fileInfo, const Settings& settings, ErrorLogger &errorLogger) OVERRIDE;
+
     void uninitstringError(const Token *tok, const std::string &varname, bool strncpy_);
     void uninitdataError(const Token *tok, const std::string &varname);
     void uninitvarError(const Token *tok, const std::string &varname);
@@ -100,7 +119,10 @@ public:
     void uninitStructMemberError(const Token *tok, const std::string &membername);
 
 private:
-    void getErrorMessages(ErrorLogger *errorLogger, const Settings *settings) const override {
+    Check::FileInfo *getFileInfo() const;
+    bool isUnsafeFunction(const Scope *scope, int argnr, const Token **tok) const;
+
+    void getErrorMessages(ErrorLogger *errorLogger, const Settings *settings) const OVERRIDE {
         CheckUninitVar c(nullptr, settings, errorLogger);
 
         // error
@@ -115,7 +137,7 @@ private:
         return "Uninitialized variables";
     }
 
-    std::string classInfo() const override {
+    std::string classInfo() const OVERRIDE {
         return "Uninitialized variables\n"
                "- using uninitialized local variables\n"
                "- using allocated data before it has been initialized\n"

@@ -19,7 +19,6 @@
 #include <csetjmp>
 #include <cmath>
 #include <csignal>
-#include <csetjmp>
 #include <iostream>
 #include <iomanip>
 #include <cinttypes>
@@ -28,17 +27,60 @@
 #include <vector>
 #include <cstdarg>
 
+void returnValue_std_isgreater(void)
+{
+    // cppcheck-suppress knownConditionTrueFalse
+    if (std::isgreater(4,2) == 0) {}
+    // @todo support floats
+    if (std::isgreater(4.0f,2.0f) == 0) {}
+}
+
+void returnValue_std_isgreaterequal(void)
+{
+    // cppcheck-suppress knownConditionTrueFalse
+    if (std::isgreaterequal(4,2) == 0) {}
+    // @todo support floats
+    if (std::isgreaterequal(4.0f,2.0f) == 0) {}
+}
+
+void returnValue_std_isless(void)
+{
+    // cppcheck-suppress knownConditionTrueFalse
+    if (std::isless(4,2) == 0) {}
+    // @todo support floats
+    if (std::isless(4.0f,2.0f) == 0) {}
+}
+
+void returnValue_std_islessequal(void)
+{
+    // cppcheck-suppress knownConditionTrueFalse
+    if (std::islessequal(4,2) == 0) {}
+    // @todo support floats
+    if (std::islessequal(4.0f,2.0f) == 0) {}
+}
+
+void returnValue_std_islessgreater(void)
+{
+    // cppcheck-suppress knownConditionTrueFalse
+    if (std::islessgreater(4,2) == 0) {}
+    // cppcheck-suppress knownConditionTrueFalse
+    if (std::islessgreater(2,4) == 0) {}
+
+    if (std::islessgreater(4.0f,2.0f) == 0) {} // @todo support floats
+    if (std::islessgreater(2.0f,4.0f) == 0) {} // @todo support floats
+}
+
 void bufferAccessOutOfBounds(void)
 {
     char a[5];
     std::strcpy(a,"abcd");
     // cppcheck-suppress bufferAccessOutOfBounds
-    // cppcheck-suppress redundantCopy
+    // TODO cppcheck-suppress redundantCopy
     std::strcpy(a, "abcde");
-    // cppcheck-suppress redundantCopy
+    // TODO cppcheck-suppress redundantCopy
     std::strncpy(a,"abcde",5);
     // cppcheck-suppress bufferAccessOutOfBounds
-    // cppcheck-suppress redundantCopy
+    // TODO cppcheck-suppress redundantCopy
     std::strncpy(a,"abcde",6);
 }
 
@@ -2858,7 +2900,7 @@ void uninivar_snprintf(char *S, size_t N, char *Format, int Int)
     (void)std::snprintf(S,N,format,Int); // format is uninitialized
     // cppcheck-suppress uninitvar
     (void)std::snprintf(S,N,Format,i); // i is uninitialized
-    // TODO cppcheck-suppress uninitvar
+    // cppcheck-suppress uninitvar
     (void)std::snprintf(s,N,Format,Int);
 
     // no warning is expected for

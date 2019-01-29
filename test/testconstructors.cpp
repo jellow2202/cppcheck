@@ -48,7 +48,7 @@ private:
         checkClass.constructors();
     }
 
-    void run() override {
+    void run() OVERRIDE {
         settings.addEnabled("style");
         settings.addEnabled("warning");
 
@@ -88,6 +88,7 @@ private:
         TEST_CASE(initvar_operator_eq3);
         TEST_CASE(initvar_operator_eq4);     // ticket #2204
         TEST_CASE(initvar_operator_eq5);     // ticket #4119
+        TEST_CASE(initvar_operator_eq6);
         TEST_CASE(initvar_same_classname);      // BUG 2208157
         TEST_CASE(initvar_chained_assign);      // BUG 2270433
         TEST_CASE(initvar_2constructors);       // BUG 2270353
@@ -95,6 +96,7 @@ private:
         TEST_CASE(initvar_staticvar);
         TEST_CASE(initvar_union);
         TEST_CASE(initvar_delegate);       // ticket #4302
+        TEST_CASE(initvar_delegate2);
 
         TEST_CASE(initvar_private_constructor);     // BUG 2354171 - private constructor
         TEST_CASE(initvar_copy_constructor); // ticket #1611
@@ -144,6 +146,7 @@ private:
         TEST_CASE(uninitVar29);
         TEST_CASE(uninitVar30); // ticket #6417
         TEST_CASE(uninitVar31); // ticket #8271
+        TEST_CASE(uninitVar32); // ticket #8835
         TEST_CASE(uninitVarEnum1);
         TEST_CASE(uninitVarEnum2); // ticket #8146
         TEST_CASE(uninitVarStream);
@@ -170,9 +173,6 @@ private:
         TEST_CASE(privateCtor1);           // If constructor is private..
         TEST_CASE(privateCtor2);           // If constructor is private..
         TEST_CASE(function);               // Function is not variable
-        TEST_CASE(uninitVarHeader1);       // Class is defined in header
-        TEST_CASE(uninitVarHeader2);       // Class is defined in header
-        TEST_CASE(uninitVarHeader3);       // Class is defined in header
         TEST_CASE(uninitVarPublished);     // Borland C++: Variables in the published section are auto-initialized
         TEST_CASE(uninitOperator);         // No FP about uninitialized 'operator[]'
         TEST_CASE(uninitFunction1);        // No FP when initialized in function
@@ -764,6 +764,32 @@ private:
         ASSERT_EQUALS("", errout.str());
     }
 
+    void initvar_operator_eq6() { // std::vector
+        check("struct Fred {\n"
+              "    uint8_t data;\n"
+              "    Fred & operator=(const Fred &rhs) {\n"
+              "        return *this;\n"
+              "    }\n"
+              "};",true);
+        ASSERT_EQUALS("[test.cpp:3]: (warning, inconclusive) Member variable 'Fred::data' is not assigned a value in 'Fred::operator='.\n", errout.str());
+
+        check("struct Fred {\n"
+              "    std::vector<int> ints;\n"
+              "    Fred & operator=(const Fred &rhs) {\n"
+              "        return *this;\n"
+              "    }\n"
+              "};",true);
+        ASSERT_EQUALS("[test.cpp:3]: (warning, inconclusive) Member variable 'Fred::ints' is not assigned a value in 'Fred::operator='.\n", errout.str());
+
+        check("struct Fred {\n"
+              "    Data data;\n"
+              "    Fred & operator=(const Fred &rhs) {\n"
+              "        return *this;\n"
+              "    }\n"
+              "};",true);
+        ASSERT_EQUALS("[test.cpp:3]: (warning, inconclusive) Member variable 'Fred::data' is not assigned a value in 'Fred::operator='.\n", errout.str());
+    }
+
     void initvar_same_classname() {
         // Bug 2208157 - False positive: Uninitialized variable, same class name
 
@@ -1113,6 +1139,29 @@ private:
         ASSERT_EQUALS("", errout.str());
     }
 
+    void initvar_delegate2() {
+        check("class Foo {\n"
+              "public:\n"
+              "    explicit Foo(const Bar bar);\n"
+              "    Foo(const std::string& id);\n"
+              "    virtual ~RtpSession() { }\n"
+              "protected:\n"
+              "    bool a;\n"
+              "    uint16_t b;\n"
+              "};\n"
+              "\n"
+              "Foo::Foo(const Bar var)\n"
+              "    : Foo(bar->getId())\n"
+              "{\n"
+              "}\n"
+              "\n"
+              "Foo::Foo(const std::string& id)\n"
+              "    : a(true)\n"
+              "    , b(0)\n"
+              "{\n"
+              "}");
+        ASSERT_EQUALS("", errout.str());
+    }
 
     void initvar_private_constructor() {
         settings.standards.cpp = Standards::CPP11;
@@ -1327,14 +1376,32 @@ private:
               "    A(A &&){}\n"
               "    const A& operator=(const A&){return *this;}\n"
               "};");
-        ASSERT_EQUALS("[test.cpp:11]: (warning) Member variable 'A::m_SemVar' is not initialized in the constructor.\n"
-                      "[test.cpp:12]: (warning) Member variable 'A::m_SemVar' is not initialized in the constructor.\n"
-                      "[test.cpp:13]: (warning) Member variable 'A::m_SemVar' is not assigned a value in 'A::operator='.\n", errout.str());
+        ASSERT_EQUALS("", errout.str());
+
+        check("class A : public std::vector<int>\n"
+              "{\n"
+              "public:\n"
+              "    A(const A &a);\n"
+              "};\n"
+              "class B\n"
+              "{\n"
+              "    A a;\n"
+              "public:\n"
+              "    B(){}\n"
+              "    B(const B&){}\n"
+              "    B(B &&){}\n"
+              "    const B& operator=(const B&){return *this;}\n"
+              "};", true);
+        ASSERT_EQUALS("[test.cpp:11]: (warning, inconclusive) Member variable 'B::a' is not initialized in the constructor.\n"
+                      "[test.cpp:12]: (warning, inconclusive) Member variable 'B::a' is not initialized in the constructor.\n"
+                      "[test.cpp:13]: (warning, inconclusive) Member variable 'B::a' is not assigned a value in 'B::operator='.\n",
+                      errout.str());
 
         check("class B\n"
               "{\n"
               "public:\n"
               "    B (B && Var);\n"
+              "    int data;\n"
               "};\n"
               "class A\n"
               "{\n"
@@ -1345,13 +1412,14 @@ private:
               "    A(A &&){}\n"
               "    const A& operator=(const A&){return *this;}\n"
               "};");
-        ASSERT_EQUALS("[test.cpp:12]: (warning) Member variable 'A::m_SemVar' is not initialized in the constructor.\n", errout.str());
+        ASSERT_EQUALS("[test.cpp:13]: (warning) Member variable 'A::m_SemVar' is not initialized in the constructor.\n", errout.str());
 
         check("class B\n"
               "{\n"
               "public:\n"
               "    B ();\n"
               "    B & operator= (const B & Var);\n"
+              "    int data;\n"
               "};\n"
               "class A\n"
               "{\n"
@@ -1362,9 +1430,7 @@ private:
               "    A(A &&){}\n"
               "    const A& operator=(const A&){return *this;}\n"
               "};");
-        ASSERT_EQUALS("[test.cpp:12]: (warning) Member variable 'A::m_SemVar' is not initialized in the constructor.\n"
-                      "[test.cpp:13]: (warning) Member variable 'A::m_SemVar' is not initialized in the constructor.\n"
-                      "[test.cpp:14]: (warning) Member variable 'A::m_SemVar' is not assigned a value in 'A::operator='.\n", errout.str());
+        ASSERT_EQUALS("", errout.str());
 
         check("class A\n"
               "{\n"
@@ -1382,6 +1448,7 @@ private:
               "{\n"
               "    B (B & Var);\n"
               "    B & operator= (const B & Var);\n"
+              "    int data;\n"
               "};\n"
               "class A\n"
               "{\n"
@@ -1390,7 +1457,7 @@ private:
               "    A(){}\n"
               "    A(const A&){}\n"
               "    const A& operator=(const A&){return *this;}\n"
-              "};");
+              "};", true);
         ASSERT_EQUALS("", errout.str());
 
         check("class B\n"
@@ -1398,6 +1465,7 @@ private:
               "public:\n"
               "    B (B & Var);\n"
               "    B & operator= (const B & Var);\n"
+              "    int data;\n"
               "};\n"
               "class A\n"
               "{\n"
@@ -1406,9 +1474,10 @@ private:
               "    A(){}\n"
               "    A(const A&){}\n"
               "    const A& operator=(const A&){return *this;}\n"
-              "};");
+              "};", true);
         ASSERT_EQUALS("[test.cpp:12]: (warning) Member variable 'A::m_SemVar' is not initialized in the constructor.\n"
-                      "[test.cpp:13]: (warning) Member variable 'A::m_SemVar' is not assigned a value in 'A::operator='.\n", errout.str());
+                      "[test.cpp:13]: (warning) Member variable 'A::m_SemVar' is not initialized in the constructor.\n"
+                      "[test.cpp:14]: (warning) Member variable 'A::m_SemVar' is not assigned a value in 'A::operator='.\n", errout.str());
     }
 
     void initvar_nocopy3() { // #3611 - unknown type is non-copyable
@@ -2382,6 +2451,39 @@ private:
         ASSERT_EQUALS("", errout.str());
     }
 
+    void uninitVar32() { // ticket #8835
+        check("class Foo {\n"
+              "   friend class Bar;\n"
+              "   int member;\n"
+              "public:\n"
+              "   Foo()\n"
+              "   {\n"
+              "      if (1) {}\n"
+              "   }\n"
+              "};\n");
+        ASSERT_EQUALS("[test.cpp:5]: (warning) Member variable 'Foo::member' is not initialized in the constructor.\n", errout.str());
+        check("class Foo {\n"
+              "   friend class Bar;\n"
+              "   int member;\n"
+              "public:\n"
+              "   Foo()\n"
+              "   {\n"
+              "      while (1) {}\n"
+              "   }\n"
+              "};\n");
+        ASSERT_EQUALS("[test.cpp:5]: (warning) Member variable 'Foo::member' is not initialized in the constructor.\n", errout.str());
+        check("class Foo {\n"
+              "   friend class Bar;\n"
+              "   int member;\n"
+              "public:\n"
+              "   Foo()\n"
+              "   {\n"
+              "      for (;;) {}\n"
+              "   }\n"
+              "};\n");
+        ASSERT_EQUALS("[test.cpp:5]: (warning) Member variable 'Foo::member' is not initialized in the constructor.\n", errout.str());
+    }
+
     void uninitVarArray1() {
         check("class John\n"
               "{\n"
@@ -2996,42 +3098,6 @@ private:
     }
 
 
-    void uninitVarHeader1() {
-        check("#line 1 \"fred.h\"\n"
-              "class Fred\n"
-              "{\n"
-              "private:\n"
-              "    unsigned int i;\n"
-              "public:\n"
-              "    Fred();\n"
-              "};\n");
-        ASSERT_EQUALS("", errout.str());
-    }
-
-    void uninitVarHeader2() {
-        check("#line 1 \"fred.h\"\n"
-              "class Fred\n"
-              "{\n"
-              "private:\n"
-              "    unsigned int i;\n"
-              "public:\n"
-              "    Fred() { }\n"
-              "};\n");
-        ASSERT_EQUALS("[fred.h:6]: (warning) Member variable 'Fred::i' is not initialized in the constructor.\n", errout.str());
-    }
-
-    void uninitVarHeader3() {
-        check("#line 1 \"fred.h\"\n"
-              "class Fred\n"
-              "{\n"
-              "private:\n"
-              "    mutable int i;\n"
-              "public:\n"
-              "    Fred() { }\n"
-              "};\n");
-        ASSERT_EQUALS("[fred.h:6]: (warning) Member variable 'Fred::i' is not initialized in the constructor.\n", errout.str());
-    }
-
     // Borland C++: No FP for published pointers - they are automatically initialized
     void uninitVarPublished() {
         check("class Fred\n"
@@ -3442,12 +3508,12 @@ private:
     }
 
     void templateConstructor() { // ticket #7942
-        check("template <class T> struct Containter {\n"
-              "  Containter();\n"
+        check("template <class T> struct Container {\n"
+              "  Container();\n"
               "  T* mElements;\n"
               "};\n"
-              "template <class T> Containter<T>::Containter() : mElements(nullptr) {}\n"
-              "Containter<int> intContainer;");
+              "template <class T> Container<T>::Container() : mElements(nullptr) {}\n"
+              "Container<int> intContainer;");
         ASSERT_EQUALS("", errout.str());
     }
 

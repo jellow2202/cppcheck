@@ -3,7 +3,7 @@
 "http://www.oasis-open.org/docbook/xml/4.4/docbookx.dtd">
 <book>
   <bookinfo>
-    <title>Cppcheck 1.84 dev</title>
+    <title>Cppcheck 1.87 dev</title>
 
     <date>2018-04-23</date>
   </bookinfo>
@@ -853,7 +853,7 @@ multiline.c:3: note: Null pointer dereference
         </varlistentry>
 
         <varlistentry>
-          <term>\t</term>
+          <term>\n</term>
 
           <listitem>
             <para>Newline</para>
@@ -1070,16 +1070,20 @@ uninitvar</programlisting>
 
       <programlisting>&lt;?xml version="1.0"?&gt;
 &lt;suppressions&gt;
-  &lt;suppression&gt;
+  &lt;suppress&gt;
     &lt;id&gt;uninitvar&lt;/id&gt;
     &lt;fileName&gt;src/file1.c&lt;/fileName&gt;
     &lt;lineNumber&gt;10&lt;/lineNumber&gt;
     &lt;symbolName&gt;var&lt;/symbolName&gt;
-  &lt;/suppression&gt;
+  &lt;/suppress&gt;
 &lt;/suppressions&gt;</programlisting>
 
       <para>The xml format is extensible and may be extended with further
       attributes in the future.</para>
+
+      <para>You can use the suppressions file like this:</para>
+
+      <programlisting>cppcheck --suppress-xml=suppressions.xml src/</programlisting>      
     </section>
 
     <section>
@@ -1498,7 +1502,8 @@ Checking range.c...
 -10:20  =&gt;  all values between -10 and 20 are valid
 :0  =&gt;  all values that are less or equal to 0 are valid
 0:  =&gt;  all values that are greater or equal to 0 are valid
-0,2:32  =&gt;  the value 0 and all values between 2 and 32 are valid </programlisting>
+0,2:32  =&gt;  the value 0 and all values between 2 and 32 are valid
+-1.5:5.6  =&gt;  all values between -1.5 and 5.6 are valid </programlisting>
         </section>
 
         <section>
@@ -1585,8 +1590,7 @@ Checking minsize.c...
         <section>
           <title>strz</title>
 
-          <para>This setting is not used by Cppcheck currently. But with this
-          you can say that an argument must be a zero-terminated
+          <para>With this you can say that an argument must be a zero-terminated
           string.</para>
 
           <para><programlisting>&lt;?xml version="1.0"?&gt;
@@ -1795,6 +1799,9 @@ Checking const.c...
 
     <section>
       <title>podtype</title>
+
+      <para>Use this for integer/float/bool/pointer types. Not for
+      structs/unions.</para>
 
       <para>Lots of code relies on typedefs providing platform independent
       types. "podtype"-tags can be used to provide necessary information to

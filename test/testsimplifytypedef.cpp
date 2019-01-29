@@ -38,7 +38,7 @@ private:
     Settings settings1;
     Settings settings2;
 
-    void run() override {
+    void run() OVERRIDE {
         settings0.addEnabled("style");
         settings2.addEnabled("style");
 
@@ -161,6 +161,9 @@ private:
         TEST_CASE(simplifyTypedef121); // ticket #5766
         TEST_CASE(simplifyTypedef122); // segmentation fault
         TEST_CASE(simplifyTypedef123); // ticket #7406
+        TEST_CASE(simplifyTypedef124); // ticket #7792
+        TEST_CASE(simplifyTypedef125); // #8749 - typedef char A[10]; p = new A[1];
+        TEST_CASE(simplifyTypedef126); // ticket #5953
 
         TEST_CASE(simplifyTypedefFunction1);
         TEST_CASE(simplifyTypedefFunction2); // ticket #1685
@@ -1446,9 +1449,8 @@ private:
             const char code[] = "typedef char (* type1)[10];\n"
                                 "LOCAL(type1) foo() { }";
 
-            // this is invalid C so just make sure it doesn't generate an internal error
-            checkSimplifyTypedef(code);
-            ASSERT_EQUALS("", errout.str());
+            // this is invalid C, assert that an "unknown macro" warning is written
+            ASSERT_THROW(checkSimplifyTypedef(code), InternalError);
         }
     }
 
@@ -1603,7 +1605,7 @@ private:
 
         // The expected tokens..
         const char expected2[] = "void f ( ) { char a [ 256 ] ; a = { 0 } ; char b [ 256 ] ; b = { 0 } ; }";
-        ASSERT_EQUALS(expected2, tok(code2, false));
+        ASSERT_EQUALS(expected2, tok(code2, false, Settings::Native, false));
         ASSERT_EQUALS("", errout.str());
 
         const char code3[] = "typedef char TString[256];\n"
@@ -1614,7 +1616,7 @@ private:
 
         // The expected tokens..
         const char expected3[] = "void f ( ) { char a [ 256 ] ; a = \"\" ; char b [ 256 ] ; b = \"\" ; }";
-        ASSERT_EQUALS(expected3, tok(code3, false));
+        ASSERT_EQUALS(expected3, tok(code3, false, Settings::Native, false));
         ASSERT_EQUALS("", errout.str());
 
         const char code4[] = "typedef char TString[256];\n"
@@ -1625,7 +1627,7 @@ private:
 
         // The expected tokens..
         const char expected4[] = "void f ( ) { char a [ 256 ] ; a = \"1234\" ; char b [ 256 ] ; b = \"5678\" ; }";
-        ASSERT_EQUALS(expected4, tok(code4, false));
+        ASSERT_EQUALS(expected4, tok(code4, false, Settings::Native, false));
         ASSERT_EQUALS("", errout.str());
     }
 
@@ -1862,8 +1864,7 @@ private:
     void simplifyTypedef81() { // ticket #2603 segmentation fault
         ASSERT_THROW(checkSimplifyTypedef("typedef\n"), InternalError);
 
-        checkSimplifyTypedef("typedef constexpr\n");
-        ASSERT_EQUALS("", errout.str());
+        ASSERT_THROW(checkSimplifyTypedef("typedef constexpr\n"), InternalError);
     }
 
     void simplifyTypedef82() { // ticket #2403
@@ -2508,6 +2509,36 @@ private:
         ASSERT_EQUALS("", errout.str());
     }
 
+    void simplifyTypedef124() { // ticket #7792
+        const char code[] = "typedef long unsigned int size_t;\n"
+                            "typedef size_t (my_func)(char *, size_t, size_t, void *);";
+
+        // Check for output..
+        checkSimplifyTypedef(code);
+        ASSERT_EQUALS_WITHOUT_LINENUMBERS("[test.cpp:1]: (debug) Failed to parse 'typedef long unsigned int size_t ;'. The checking continues anyway.\n", errout.str());
+
+        const char code1[] = "typedef long unsigned int uint32_t;\n"
+                             "typedef uint32_t (my_func)(char *, uint32_t, uint32_t, void *);";
+
+        // Check for output..
+        checkSimplifyTypedef(code1);
+        ASSERT_EQUALS("", errout.str());
+
+    }
+
+    void simplifyTypedef125() { // #8749
+        const char code[] = "typedef char A[3];\n"
+                            "char (*p)[3] = new A[4];";
+        const char exp [] = "char ( * p ) [ 3 ] = new char [ 4 ] [ 3 ] ;";
+        ASSERT_EQUALS(exp, tok(code, false));
+    }
+
+    void simplifyTypedef126() { // #5953
+        const char code[] = "typedef char automap_data_t[100];\n"
+                            "void write_array(automap_data_t *data) {}";
+        const char exp [] = "void write_array ( char ( * data ) [ 100 ] ) { }";
+        ASSERT_EQUALS(exp, tok(code, false));
+    }
 
     void simplifyTypedefFunction1() {
         {

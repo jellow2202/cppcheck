@@ -135,6 +135,7 @@ void validCode()
     WSACleanup();
 
     wordInit = MAKEWORD(1, 2);
+    // cppcheck-suppress redundantAssignment
     dwordInit = MAKELONG(1, 2);
     // cppcheck-suppress redundantAssignment
     wordInit = LOWORD(dwordInit);
@@ -210,13 +211,13 @@ void bufferAccessOutOfBounds()
     RtlCompareMemory(byteBuf, byteBuf2, 20);
     // cppcheck-suppress bufferAccessOutOfBounds
     RtlMoveMemory(byteBuf, byteBuf2, 20);
-    // cppcheck-suppress redundantCopy
+    // TODO cppcheck-suppress redundantCopy
     // cppcheck-suppress bufferAccessOutOfBounds
     MoveMemory(byteBuf, byteBuf2, 20);
-    // cppcheck-suppress redundantCopy
+    // TODO cppcheck-suppress redundantCopy
     // cppcheck-suppress bufferAccessOutOfBounds
     RtlCopyMemory(byteBuf, byteBuf2, 20);
-    // cppcheck-suppress redundantCopy
+    // TODO cppcheck-suppress redundantCopy
     // cppcheck-suppress bufferAccessOutOfBounds
     CopyMemory(byteBuf, byteBuf2, 20);
     // cppcheck-suppress bufferAccessOutOfBounds
@@ -256,6 +257,7 @@ void nullPointer()
     //Incorrect: 1. parameter, must not be null
     // cppcheck-suppress nullPointer
     FARPROC pAddr = GetProcAddress(NULL, "name");
+    (void)pAddr;
     HMODULE * phModule = NULL;
     // cppcheck-suppress nullPointer
     GetModuleHandleEx(0, NULL, phModule);
@@ -531,7 +533,7 @@ void invalidFunctionArg()
     // cppcheck-suppress invalidFunctionArg
     void *pMem = _malloca(-1);
     _freea(pMem);
-    // cppcheck-suppress unreadVariable
+    // FIXME cppcheck-suppress unreadVariable
     // cppcheck-suppress invalidFunctionArg
     pMem = _alloca(-5);
 }
@@ -837,11 +839,9 @@ error_t uninitvar__strncpy_s_l(char *strDest, size_t numberOfElements, const cha
     // cppcheck-suppress uninitvar
     (void)_strncpy_s_l(strDest, numberOfElements, uninit_strSource, count, locale);
     // cppcheck-suppress uninitvar
-    (void)_strncpy_s_l(strDest, numberOfElements, strSource, count, locale);
-    // cppcheck-suppress uninitvar
     (void)_strncpy_s_l(strDest, numberOfElements, strSource, uninit_count, locale);
     // cppcheck-suppress uninitvar
-    (void)_strncpy_s_l(strDest, numberOfElements, strSource, uninit_count, uninit_locale);
+    (void)_strncpy_s_l(strDest, numberOfElements, strSource, count, uninit_locale);
 
     // no warning shall be shown for
     return _strncpy_s_l(strDest, numberOfElements, strSource, count, locale);
@@ -858,3 +858,14 @@ error_t nullPointer__strncpy_s_l(char *strDest, size_t numberOfElements, const c
     // no warning shall be shown for
     return _strncpy_s_l(strDest, numberOfElements, strSource, count, locale);
 }
+
+class MyClass :public CObject {
+    DECLARE_DYNAMIC(MyClass)
+    DECLARE_DYNCREATE(MyClass)
+    DECLARE_SERIAL(MyClass)
+public:
+    MyClass() {}
+};
+IMPLEMENT_DYNAMIC(MyClass, CObject)
+IMPLEMENT_DYNCREATE(MyClass, CObject)
+IMPLEMENT_SERIAL(MyClass,CObject, 42)

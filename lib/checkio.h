@@ -1,6 +1,6 @@
 /*
  * Cppcheck - A tool for static C/C++ code analysis
- * Copyright (C) 2007-2017 Cppcheck team.
+ * Copyright (C) 2007-2018 Cppcheck team.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -50,14 +50,14 @@ public:
     }
 
     /** @brief Run checks on the normal token list */
-    void runChecks(const Tokenizer *tokenizer, const Settings *settings, ErrorLogger *errorLogger) override {
+    void runChecks(const Tokenizer *tokenizer, const Settings *settings, ErrorLogger *errorLogger) OVERRIDE {
         CheckIO checkIO(tokenizer, settings, errorLogger);
 
         checkIO.checkWrongPrintfScanfArguments();
     }
 
     /** @brief Run checks on the simplified token list */
-    void runSimplifiedChecks(const Tokenizer *tokenizer, const Settings *settings, ErrorLogger *errorLogger) override {
+    void runSimplifiedChecks(const Tokenizer *tokenizer, const Settings *settings, ErrorLogger *errorLogger) OVERRIDE {
         CheckIO checkIO(tokenizer, settings, errorLogger);
 
         checkIO.checkCoutCerrMisusage();
@@ -139,7 +139,7 @@ private:
     static void argumentType(std::ostream & os, const ArgumentInfo * argInfo);
     static Severity::SeverityType getSeverity(const ArgumentInfo *argInfo);
 
-    void getErrorMessages(ErrorLogger *errorLogger, const Settings *settings) const override {
+    void getErrorMessages(ErrorLogger *errorLogger, const Settings *settings) const OVERRIDE {
         CheckIO c(nullptr, settings, errorLogger);
 
         c.coutCerrMisusageError(nullptr,  "cout");
@@ -162,6 +162,7 @@ private:
         c.invalidPrintfArgTypeError_float(nullptr,  1, "f", nullptr);
         c.invalidLengthModifierError(nullptr,  1, "I");
         c.invalidScanfFormatWidthError(nullptr,  10, 5, nullptr, 's');
+        c.invalidScanfFormatWidthError(nullptr,  99, -1, nullptr, 's');
         c.wrongPrintfScanfPosixParameterPositionError(nullptr,  "printf", 2, 1);
     }
 
@@ -169,7 +170,7 @@ private:
         return "IO using format string";
     }
 
-    std::string classInfo() const override {
+    std::string classInfo() const OVERRIDE {
         return "Check format string input/output operations.\n"
                "- Bad usage of the function 'sprintf' (overlapping data)\n"
                "- Missing or wrong width specifiers in 'scanf' format string\n"

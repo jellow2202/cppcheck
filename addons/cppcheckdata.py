@@ -356,9 +356,11 @@ class Variable:
     http://cppcheck.net/devinfo/doxyoutput/classVariable.html
 
     Attributes:
-        nameToken       name token in variable declaration
-        typeStartToken  start token of variable declaration
-        typeEndToken    end token of variable declaration
+        nameToken       Name token in variable declaration
+        typeStartToken  Start token of variable declaration
+        typeEndToken    End token of variable declaration
+        access          Global/Local/Namespace/Public/Protected/Public/Throw/Argument
+        scope           Variable scope
         isArgument      Is this variable a function argument?
         isArray         Is this variable an array?
         isClass         Is this variable a class or struct?
@@ -378,6 +380,9 @@ class Variable:
     typeStartToken = None
     typeEndTokenId = None
     typeEndToken = None
+    access = None
+    scopeId = None
+    scope = None
     isArgument = False
     isArray = False
     isClass = False
@@ -397,6 +402,9 @@ class Variable:
         self.typeStartToken = None
         self.typeEndTokenId = element.get('typeEndToken')
         self.typeEndToken = None
+        self.access = element.get('access')
+        self.scopeId = element.get('scope')
+        self.scope = None
         self.isArgument = element.get('isArgument') == 'true'
         self.isArray = element.get('isArray') == 'true'
         self.isClass = element.get('isClass') == 'true'
@@ -414,6 +422,7 @@ class Variable:
         self.nameToken = IdMap[self.nameTokenId]
         self.typeStartToken = IdMap[self.typeStartTokenId]
         self.typeEndToken = IdMap[self.typeEndTokenId]
+        self.scope = IdMap[self.scopeId]
 
 
 class ValueFlow:
@@ -436,23 +445,45 @@ class ValueFlow:
         Value class
 
         Attributes:
-            intvalue     integer value
-            tokvalue     token value
-            condition    condition where this Value comes from
+            intvalue         integer value
+            tokvalue         token value
+            floatvalue       float value
+            containerSize    container size
+            condition        condition where this Value comes from
+            valueKind        'known' or 'possible'
+            inconclusive     Is value inconclusive?
         """
 
         intvalue = None
         tokvalue = None
+        floatvalue = None
+        containerSize = None
         condition = None
+        valueKind = None
+        inconclusive = False
+
+        def isKnown(self):
+            return self.valueKind and self.valueKind == 'known'
+
+        def isPossible(self):
+            return self.valueKind and self.valueKind == 'possible'
 
         def __init__(self, element):
             self.intvalue = element.get('intvalue')
             if self.intvalue:
                 self.intvalue = int(self.intvalue)
             self.tokvalue = element.get('tokvalue')
+            self.floatvalue = element.get('floatvalue')
+            self.containerSize = element.get('container-size')
             self.condition = element.get('condition-line')
             if self.condition:
                 self.condition = int(self.condition)
+            if element.get('known'):
+                valueKind = 'known'
+            elif element.get('possible'):
+                valueKind = 'possible'
+            if element.get('inconclusive'):
+                inconclusive = 'known'
 
     def __init__(self, element):
         self.Id = element.get('id')
@@ -484,7 +515,7 @@ class Suppression:
         self.symbolName = element.get('symbolName')
 
     def isMatch(self, file, line, message, errorId):
-        if (fnmatch(file, self.fileName)
+        if ((self.fileName is None or fnmatch(file, self.fileName))
             and (self.lineNumber is None or line == self.lineNumber)
             and (self.symbolName is None or fnmatch(message, '*'+self.symbolName+'*'))
             and fnmatch(errorId, self.errorId)):
@@ -767,7 +798,7 @@ def reportError(template, callstack=(), severity='', message='', errorId='', sup
         :param template: format string, or 'gcc', 'vs' or 'edit'.
         :param callstack: e.g. [['file1.cpp',10],['file2.h','20'], ... ]
         :param severity: e.g. 'error', 'warning' ...
-        :param id: message ID.
+        :param errorId: message ID.
         :param message: message text.
     """
     # expand predefined templates

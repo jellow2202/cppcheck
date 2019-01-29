@@ -42,13 +42,11 @@ static const struct CWE CWE682(682U);   // Incorrect Calculation
 //---------------------------------------------------------------------------
 void CheckSizeof::checkSizeofForNumericParameter()
 {
-    if (!_settings->isEnabled(Settings::WARNING))
+    if (!mSettings->isEnabled(Settings::WARNING))
         return;
 
-    const SymbolDatabase *symbolDatabase = _tokenizer->getSymbolDatabase();
-    const std::size_t functions = symbolDatabase->functionScopes.size();
-    for (std::size_t i = 0; i < functions; ++i) {
-        const Scope * scope = symbolDatabase->functionScopes[i];
+    const SymbolDatabase *symbolDatabase = mTokenizer->getSymbolDatabase();
+    for (const Scope * scope : symbolDatabase->functionScopes) {
         for (const Token* tok = scope->bodyStart->next(); tok != scope->bodyEnd; tok = tok->next()) {
             if (Token::Match(tok, "sizeof ( %num% )") ||
                 Token::Match(tok, "sizeof %num%")) {
@@ -72,12 +70,10 @@ void CheckSizeof::sizeofForNumericParameterError(const Token *tok)
 //---------------------------------------------------------------------------
 void CheckSizeof::checkSizeofForArrayParameter()
 {
-    if (!_settings->isEnabled(Settings::WARNING))
+    if (!mSettings->isEnabled(Settings::WARNING))
         return;
-    const SymbolDatabase *symbolDatabase = _tokenizer->getSymbolDatabase();
-    const std::size_t functions = symbolDatabase->functionScopes.size();
-    for (std::size_t i = 0; i < functions; ++i) {
-        const Scope * scope = symbolDatabase->functionScopes[i];
+    const SymbolDatabase *symbolDatabase = mTokenizer->getSymbolDatabase();
+    for (const Scope * scope : symbolDatabase->functionScopes) {
         for (const Token* tok = scope->bodyStart->next(); tok != scope->bodyEnd; tok = tok->next()) {
             if (Token::Match(tok, "sizeof ( %var% )") ||
                 Token::Match(tok, "sizeof %var% !![")) {
@@ -112,13 +108,11 @@ void CheckSizeof::sizeofForArrayParameterError(const Token *tok)
 
 void CheckSizeof::checkSizeofForPointerSize()
 {
-    if (!_settings->isEnabled(Settings::WARNING))
+    if (!mSettings->isEnabled(Settings::WARNING))
         return;
 
-    const SymbolDatabase *symbolDatabase = _tokenizer->getSymbolDatabase();
-    const std::size_t functions = symbolDatabase->functionScopes.size();
-    for (std::size_t i = 0; i < functions; ++i) {
-        const Scope * scope = symbolDatabase->functionScopes[i];
+    const SymbolDatabase *symbolDatabase = mTokenizer->getSymbolDatabase();
+    for (const Scope * scope : symbolDatabase->functionScopes) {
         for (const Token* tok = scope->bodyStart; tok != scope->bodyEnd; tok = tok->next()) {
             const Token* tokSize;
             const Token* tokFunc;
@@ -262,10 +256,10 @@ void CheckSizeof::divideBySizeofError(const Token *tok, const std::string &memfu
 //-----------------------------------------------------------------------------
 void CheckSizeof::sizeofsizeof()
 {
-    if (!_settings->isEnabled(Settings::WARNING))
+    if (!mSettings->isEnabled(Settings::WARNING))
         return;
 
-    for (const Token *tok = _tokenizer->tokens(); tok; tok = tok->next()) {
+    for (const Token *tok = mTokenizer->tokens(); tok; tok = tok->next()) {
         if (Token::Match(tok, "sizeof (| sizeof")) {
             sizeofsizeofError(tok);
             tok = tok->next();
@@ -286,12 +280,12 @@ void CheckSizeof::sizeofsizeofError(const Token *tok)
 
 void CheckSizeof::sizeofCalculation()
 {
-    if (!_settings->isEnabled(Settings::WARNING))
+    if (!mSettings->isEnabled(Settings::WARNING))
         return;
 
-    const bool printInconclusive = _settings->inconclusive;
+    const bool printInconclusive = mSettings->inconclusive;
 
-    for (const Token *tok = _tokenizer->tokens(); tok; tok = tok->next()) {
+    for (const Token *tok = mTokenizer->tokens(); tok; tok = tok->next()) {
         if (!Token::simpleMatch(tok, "sizeof ("))
             continue;
 
@@ -321,10 +315,10 @@ void CheckSizeof::sizeofCalculationError(const Token *tok, bool inconclusive)
 
 void CheckSizeof::sizeofFunction()
 {
-    if (!_settings->isEnabled(Settings::WARNING))
+    if (!mSettings->isEnabled(Settings::WARNING))
         return;
 
-    for (const Token *tok = _tokenizer->tokens(); tok; tok = tok->next()) {
+    for (const Token *tok = mTokenizer->tokens(); tok; tok = tok->next()) {
         if (Token::simpleMatch(tok, "sizeof (")) {
 
             // ignore if the `sizeof` result is cast to void inside a macro, i.e. the calculation is
@@ -342,7 +336,7 @@ void CheckSizeof::sizeofFunction()
                 if (checkToken->tokType() == Token::eName)
                     break;
                 const Function * fun = checkToken->function();
-                // Dont report error if the function is overloaded
+                // Don't report error if the function is overloaded
                 if (fun && fun->nestedIn->functionMap.count(checkToken->str()) == 1) {
                     sizeofFunctionError(tok);
                 }
@@ -362,11 +356,11 @@ void CheckSizeof::sizeofFunctionError(const Token *tok)
 //-----------------------------------------------------------------------------
 void CheckSizeof::suspiciousSizeofCalculation()
 {
-    if (!_settings->isEnabled(Settings::WARNING) || !_settings->inconclusive)
+    if (!mSettings->isEnabled(Settings::WARNING) || !mSettings->inconclusive)
         return;
 
     // TODO: Use AST here. This should be possible as soon as sizeof without brackets is correctly parsed
-    for (const Token *tok = _tokenizer->tokens(); tok; tok = tok->next()) {
+    for (const Token *tok = mTokenizer->tokens(); tok; tok = tok->next()) {
         if (Token::simpleMatch(tok, "sizeof (")) {
             const Token* const end = tok->linkAt(1);
             const Variable* var = end->previous()->variable();
@@ -395,10 +389,10 @@ void CheckSizeof::divideSizeofError(const Token *tok)
 
 void CheckSizeof::sizeofVoid()
 {
-    if (!_settings->isEnabled(Settings::PORTABILITY))
+    if (!mSettings->isEnabled(Settings::PORTABILITY))
         return;
 
-    for (const Token *tok = _tokenizer->tokens(); tok; tok = tok->next()) {
+    for (const Token *tok = mTokenizer->tokens(); tok; tok = tok->next()) {
         if (Token::simpleMatch(tok, "sizeof ( )")) { // "sizeof(void)" gets simplified to sizeof ( )
             sizeofVoidError(tok);
         } else if (Token::simpleMatch(tok, "sizeof (") && tok->next()->astOperand2()) {
@@ -445,7 +439,7 @@ void CheckSizeof::sizeofDereferencedVoidPointerError(const Token *tok, const std
 
 void CheckSizeof::arithOperationsOnVoidPointerError(const Token* tok, const std::string &varname, const std::string &vartype)
 {
-    const std::string message = "'" + varname + "' is of type '" + vartype + "'. When using void pointers in calculations, the behaviour is undefined.";
+    const std::string message = "'$symbol' is of type '" + vartype + "'. When using void pointers in calculations, the behaviour is undefined.";
     const std::string verbose = message + " Arithmetic operations on 'void *' is a GNU C extension, which defines the 'sizeof(void)' to be 1.";
-    reportError(tok, Severity::portability, "arithOperationsOnVoidPointer", message + "\n" + verbose, CWE467, false);
+    reportError(tok, Severity::portability, "arithOperationsOnVoidPointer", "$symbol:" + varname + '\n' + message + '\n' + verbose, CWE467, false);
 }

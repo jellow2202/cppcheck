@@ -1,6 +1,6 @@
 /*
  * Cppcheck - A tool for static C/C++ code analysis
- * Copyright (C) 2007-2017 Cppcheck team.
+ * Copyright (C) 2007-2018 Cppcheck team.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -54,10 +54,11 @@ namespace tinyxml2 {
 
 /** @brief Simple container to be thrown when internal error is detected. */
 struct InternalError {
-    enum Type {AST, SYNTAX, INTERNAL};
+    enum Type {AST, SYNTAX, UNKNOWN_MACRO, INTERNAL};
     InternalError(const Token *tok, const std::string &errorMsg, Type type = INTERNAL);
     const Token *token;
     std::string errorMessage;
+    Type type;
     std::string id;
 };
 
@@ -193,11 +194,11 @@ public:
             }
 
             FileLocation(const std::string &file, unsigned int aline)
-                : fileIndex(0), line(aline), col(0), _file(file) {
+                : fileIndex(0), line(aline), col(0), mOrigFileName(file), mFileName(file) {
             }
 
             FileLocation(const std::string &file, const std::string &info, unsigned int aline)
-                : fileIndex(0), line(aline), col(0), _file(file), _info(info) {
+                : fileIndex(0), line(aline), col(0), mOrigFileName(file), mFileName(file), mInfo(info) {
             }
 
             FileLocation(const Token* tok, const TokenList* tokenList);
@@ -209,6 +210,8 @@ public:
              * @return filename.
              */
             std::string getfile(bool convert = true) const;
+
+            std::string getOrigFile(bool convert = true) const;
 
             /**
              * Set the filename.
@@ -222,19 +225,20 @@ public:
             std::string stringify() const;
 
             unsigned int fileIndex;
-            unsigned int line;
+            int line; // negative value means "no line"
             unsigned int col;
 
             std::string getinfo() const {
-                return _info;
+                return mInfo;
             }
             void setinfo(const std::string &i) {
-                _info = i;
+                mInfo = i;
             }
 
         private:
-            std::string _file;
-            std::string _info;
+            std::string mOrigFileName;
+            std::string mFileName;
+            std::string mInfo;
         };
 
         ErrorMessage(const std::list<FileLocation> &callStack, const std::string& file1, Severity::SeverityType severity, const std::string &msg, const std::string &id, bool inconclusive);
@@ -282,17 +286,17 @@ public:
 
         /** Short message (single line short message) */
         const std::string &shortMessage() const {
-            return _shortMessage;
+            return mShortMessage;
         }
 
         /** Verbose message (may be the same as the short message) */
         const std::string &verboseMessage() const {
-            return _verboseMessage;
+            return mVerboseMessage;
         }
 
         /** Symbol names */
         const std::string &symbolNames() const {
-            return _symbolNames;
+            return mSymbolNames;
         }
 
         Suppressions::ErrorMessage toSuppressionsErrorMessage() const;
@@ -310,13 +314,13 @@ public:
         static std::string fixInvalidChars(const std::string& raw);
 
         /** Short message */
-        std::string _shortMessage;
+        std::string mShortMessage;
 
         /** Verbose message */
-        std::string _verboseMessage;
+        std::string mVerboseMessage;
 
         /** symbol names */
-        std::string _symbolNames;
+        std::string mSymbolNames;
     };
 
     ErrorLogger() { }
@@ -364,10 +368,11 @@ public:
     }
 
     /**
-     * Report list of unmatched suppressions
+     * Report unmatched suppressions
      * @param unmatched list of unmatched suppressions (from Settings::Suppressions::getUnmatched(Local|Global)Suppressions)
+     * @return true is returned if errors are reported
      */
-    void reportUnmatchedSuppressions(const std::list<Suppressions::Suppression> &unmatched);
+    bool reportUnmatchedSuppressions(const std::list<Suppressions::Suppression> &unmatched);
 
     static std::string callStackToString(const std::list<ErrorLogger::ErrorMessage::FileLocation> &callStack);
 
@@ -386,6 +391,9 @@ public:
                "</plist>";
     }
 };
+
+/** Replace substring. Example replaceStr("1,NR,3", "NR", "2") => "1,2,3" */
+std::string replaceStr(std::string s, const std::string &from, const std::string &to);
 
 /// @}
 //---------------------------------------------------------------------------

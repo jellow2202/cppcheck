@@ -1,6 +1,6 @@
 /*
  * Cppcheck - A tool for static C/C++ code analysis
- * Copyright (C) 2007-2017 Cppcheck team.
+ * Copyright (C) 2007-2018 Cppcheck team.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -78,4 +78,15 @@ QString ErrorItem::ToString() const
         str += "  " + errorPath[i].file + ": " + QString::number(errorPath[i].line) + "\n";
     }
     return str;
+}
+
+bool ErrorItem::sameCID(const ErrorItem &errorItem1, const ErrorItem &errorItem2)
+{
+    // TODO: Implement some better CID calculation
+    return errorItem1.errorId == errorItem2.errorId &&
+           errorItem1.errorPath == errorItem2.errorPath &&
+           errorItem1.file0 == errorItem2.file0 &&
+           errorItem1.message == errorItem2.message &&
+           errorItem1.inconclusive == errorItem2.inconclusive &&
+           errorItem1.severity == errorItem2.severity;
 }

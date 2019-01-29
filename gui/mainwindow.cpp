@@ -83,6 +83,7 @@ MainWindow::MainWindow(TranslationHandler* th, QSettings* settings) :
     // "Filter" toolbar
     mLineEditFilter = new QLineEdit(mUI.mToolBarFilter);
     mLineEditFilter->setPlaceholderText(tr("Quick Filter:"));
+    mLineEditFilter->setClearButtonEnabled(true);
     mUI.mToolBarFilter->addWidget(mLineEditFilter);
     connect(mLineEditFilter, SIGNAL(textChanged(const QString&)), mFilterTimer, SLOT(start()));
     connect(mLineEditFilter, &QLineEdit::returnPressed, this, &MainWindow::filterResults);
@@ -723,7 +724,7 @@ void MainWindow::addIncludeDirs(const QStringList &includeDirs, Settings &result
     }
 }
 
-Library::Error MainWindow::loadLibrary(Library *library, QString filename)
+Library::Error MainWindow::loadLibrary(Library *library, const QString &filename)
 {
     Library::Error ret;
 
@@ -838,6 +839,10 @@ Settings MainWindow::getCppcheckSettings()
             result.userDefines += define.toStdString();
         }
 
+        const QStringList undefines = mProjectFile->getUndefines();
+        foreach (QString undefine, undefines)
+            result.userUndefs.insert(undefine.toStdString());
+
         const QStringList libraries = mProjectFile->getLibraries();
         foreach (QString library, libraries) {
             const QString filename = library + ".cfg";
@@ -866,8 +871,7 @@ Settings MainWindow::getCppcheckSettings()
         const QString platform = mProjectFile->getPlatform();
         if (platform.endsWith(".xml")) {
             const QString applicationFilePath = QCoreApplication::applicationFilePath();
-            const QString appPath = QFileInfo(applicationFilePath).canonicalPath();
-            result.loadPlatformFile(appPath.toStdString().c_str(), platform.toStdString());
+            result.loadPlatformFile(applicationFilePath.toStdString().c_str(), platform.toStdString());
         } else {
             for (int i = cppcheck::Platform::Native; i <= cppcheck::Platform::Unix64; i++) {
                 const cppcheck::Platform::PlatformType p = (cppcheck::Platform::PlatformType)i;
@@ -896,7 +900,6 @@ Settings MainWindow::getCppcheckSettings()
     result.addEnabled("missingInclude");
     if (!result.buildDir.empty())
         result.addEnabled("unusedFunction");
-    result.debug = false;
     result.debugwarnings = mSettings->value(SETTINGS_SHOW_DEBUG_WARNINGS, false).toBool();
     result.quiet = false;
     result.verbose = true;
@@ -1141,7 +1144,7 @@ void MainWindow::openResults()
     }
 }
 
-void MainWindow::loadResults(const QString selectedFile)
+void MainWindow::loadResults(const QString &selectedFile)
 {
     if (selectedFile.isEmpty())
         return;
@@ -1156,7 +1159,7 @@ void MainWindow::loadResults(const QString selectedFile)
     formatAndSetTitle(selectedFile);
 }
 
-void MainWindow::loadResults(const QString selectedFile, const QString sourceDirectory)
+void MainWindow::loadResults(const QString &selectedFile, const QString &sourceDirectory)
 {
     loadResults(selectedFile);
     mUI.mResults->setCheckDirectory(sourceDirectory);
@@ -1292,7 +1295,7 @@ void MainWindow::showAuthors()
     dlg->exec();
 }
 
-void MainWindow::performSelectedFilesCheck(QStringList selectedFilesList)
+void MainWindow::performSelectedFilesCheck(const QStringList &selectedFilesList)
 {
     reAnalyzeSelected(selectedFilesList);
 }
@@ -1407,7 +1410,6 @@ void MainWindow::openOnlineHelp()
 
 void MainWindow::openProjectFile()
 {
-    const QString lastPath = mSettings->value(SETTINGS_LAST_PROJECT_PATH, QString()).toString();
     const QString filter = tr("Project files (*.cppcheck);;All files(*.*)");
     const QString filepath = QFileDialog::getOpenFileName(this,
                              tr("Select Project File"),
@@ -1480,6 +1482,8 @@ void MainWindow::analyzeProject(const ProjectFile *projectFile, const bool check
     QFileInfo inf(projectFile->getFilename());
     const QString rootpath = projectFile->getRootPath();
 
+    QDir::setCurrent(inf.absolutePath());
+
     mThread->setAddonsAndTools(projectFile->getAddonsAndTools(), mSettings->value(SETTINGS_MISRA_FILE).toString());
     mUI.mResults->setTags(projectFile->getTags());
 
@@ -1540,15 +1544,6 @@ void MainWindow::analyzeProject(const ProjectFile *projectFile, const bool check
     // project file was located.
     if (paths.isEmpty()) {
         paths << mCurrentDirectory;
-    }
-
-    // Convert relative paths to absolute paths
-    for (int i = 0; i < paths.size(); i++) {
-        if (!QDir::isAbsolutePath(paths[i])) {
-            QString path = mCurrentDirectory + "/";
-            path += paths[i];
-            paths[i] = QDir::cleanPath(path);
-        }
     }
     doAnalyzeFiles(paths, checkLibrary, checkConfiguration);
 }
@@ -1658,28 +1653,28 @@ void MainWindow::enableProjectOpenActions(bool enable)
 void MainWindow::openRecentProject()
 {
     QAction *action = qobject_cast<QAction *>(sender());
-    if (action) {
-        const QString project = action->data().toString();
-        QFileInfo inf(project);
-        if (inf.exists()) {
-            loadProjectFile(project);
-        } else {
-            const QString text(tr("The project file\n\n%1\n\n could not be found!\n\n"
-                                  "Do you want to remove the file from the recently "
-                                  "used projects -list?").arg(project));
+    if (!action)
+        return;
+    const QString project = action->data().toString();
+    QFileInfo inf(project);
+    if (inf.exists()) {
+        loadProjectFile(project);
+        loadLastResults();
+    } else {
+        const QString text(tr("The project file\n\n%1\n\n could not be found!\n\n"
+                              "Do you want to remove the file from the recently "
+                              "used projects -list?").arg(project));
 
-            QMessageBox msg(QMessageBox::Warning,
-                            tr("Cppcheck"),
-                            text,
-                            QMessageBox::Yes | QMessageBox::No,
-                            this);
+        QMessageBox msg(QMessageBox::Warning,
+                        tr("Cppcheck"),
+                        text,
+                        QMessageBox::Yes | QMessageBox::No,
+                        this);
 
-            msg.setDefaultButton(QMessageBox::No);
-            int rv = msg.exec();
-            if (rv == QMessageBox::Yes) {
-                removeProjectMRU(project);
-            }
-
+        msg.setDefaultButton(QMessageBox::No);
+        int rv = msg.exec();
+        if (rv == QMessageBox::Yes) {
+            removeProjectMRU(project);
         }
     }
 }
@@ -1693,11 +1688,10 @@ void MainWindow::updateMRUMenuItems()
 
     QStringList projects = mSettings->value(SETTINGS_MRU_PROJECTS).toStringList();
 
-    // Do a sanity check - remove duplicates and empty or space only items
+    // Do a sanity check - remove duplicates and non-existing projects
     int removed = projects.removeDuplicates();
     for (int i = projects.size() - 1; i >= 0; i--) {
-        QString text = projects[i].trimmed();
-        if (text.isEmpty()) {
+        if (!QFileInfo(projects[i]).exists()) {
             projects.removeAt(i);
             removed++;
         }

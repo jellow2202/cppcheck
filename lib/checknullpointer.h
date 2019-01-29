@@ -1,6 +1,6 @@
 /*
  * Cppcheck - A tool for static C/C++ code analysis
- * Copyright (C) 2007-2017 Cppcheck team.
+ * Copyright (C) 2007-2018 Cppcheck team.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -24,6 +24,7 @@
 
 #include "check.h"
 #include "config.h"
+#include "ctu.h"
 #include "valueflow.h"
 
 #include <list>
@@ -54,14 +55,14 @@ public:
     }
 
     /** @brief Run checks against the normal token list */
-    void runChecks(const Tokenizer *tokenizer, const Settings *settings, ErrorLogger *errorLogger) override {
+    void runChecks(const Tokenizer *tokenizer, const Settings *settings, ErrorLogger *errorLogger) OVERRIDE {
         CheckNullPointer checkNullPointer(tokenizer, settings, errorLogger);
         checkNullPointer.nullPointer();
         checkNullPointer.arithmetic();
     }
 
     /** @brief Run checks against the simplified token list */
-    void runSimplifiedChecks(const Tokenizer *tokenizer, const Settings *settings, ErrorLogger *errorLogger) override {
+    void runSimplifiedChecks(const Tokenizer *tokenizer, const Settings *settings, ErrorLogger *errorLogger) OVERRIDE {
         CheckNullPointer checkNullPointer(tokenizer, settings, errorLogger);
         checkNullPointer.nullConstantDereference();
     }
@@ -85,7 +86,9 @@ public:
      * @param unknown it is not known if there is a pointer dereference (could be reported as a debug message)
      * @return true => there is a dereference
      */
-    static bool isPointerDeRef(const Token *tok, bool &unknown);
+    bool isPointerDeRef(const Token *tok, bool &unknown) const;
+
+    static bool isPointerDeRef(const Token *tok, bool &unknown, const Settings *settings);
 
     /** @brief possible null pointer dereference */
     void nullPointer();
@@ -99,13 +102,32 @@ public:
         nullPointerError(tok, "", &v, false);
     }
     void nullPointerError(const Token *tok, const std::string &varname, const ValueFlow::Value* value, bool inconclusive);
-private:
 
+    /* data for multifile checking */
+    class MyFileInfo : public Check::FileInfo {
+    public:
+        /** function arguments that are dereferenced without checking if they are null */
+        std::list<CTU::FileInfo::UnsafeUsage> unsafeUsage;
+
+        /** Convert MyFileInfo data into xml string */
+        std::string toString() const OVERRIDE;
+    };
+
+    /** @brief Parse current TU and extract file info */
+    Check::FileInfo *getFileInfo(const Tokenizer *tokenizer, const Settings *settings) const OVERRIDE;
+
+    Check::FileInfo * loadFileInfoFromXml(const tinyxml2::XMLElement *xmlElement) const OVERRIDE;
+
+    /** @brief Analyse all file infos for all TU */
+    bool analyseWholeProgram(const CTU::FileInfo *ctu, const std::list<Check::FileInfo*> &fileInfo, const Settings& settings, ErrorLogger &errorLogger) OVERRIDE;
+
+private:
     /** Get error messages. Used by --errorlist */
-    void getErrorMessages(ErrorLogger *errorLogger, const Settings *settings) const override {
+    void getErrorMessages(ErrorLogger *errorLogger, const Settings *settings) const OVERRIDE {
         CheckNullPointer c(nullptr, settings, errorLogger);
         c.nullPointerError(nullptr, "pointer", nullptr, false);
-        c.arithmeticError(nullptr, nullptr);
+        c.pointerArithmeticError(nullptr, nullptr, false);
+        c.redundantConditionWarning(nullptr, nullptr, nullptr, false);
     }
 
     /** Name of check */
@@ -114,7 +136,7 @@ private:
     }
 
     /** class info in WIKI format. Used by --doc */
-    std::string classInfo() const override {
+    std::string classInfo() const OVERRIDE {
         return "Null pointers\n"
                "- null pointer dereferencing\n"
                "- undefined null pointer arithmetic\n";
@@ -134,7 +156,8 @@ private:
 
     /** undefined null pointer arithmetic */
     void arithmetic();
-    void arithmeticError(const Token *tok, const ValueFlow::Value *value);
+    void pointerArithmeticError(const Token* tok, const ValueFlow::Value *value, bool inconclusive);
+    void redundantConditionWarning(const Token* tok, const ValueFlow::Value *value, const Token *condition, bool inconclusive);
 };
 /// @}
 //---------------------------------------------------------------------------

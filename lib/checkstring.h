@@ -50,7 +50,7 @@ public:
     }
 
     /** @brief Run checks against the normal token list */
-    void runChecks(const Tokenizer *tokenizer, const Settings *settings, ErrorLogger *errorLogger) override {
+    void runChecks(const Tokenizer *tokenizer, const Settings *settings, ErrorLogger *errorLogger) OVERRIDE {
         CheckString checkString(tokenizer, settings, errorLogger);
 
         // Checks
@@ -61,7 +61,7 @@ public:
     }
 
     /** @brief Run checks against the simplified token list */
-    void runSimplifiedChecks(const Tokenizer *tokenizer, const Settings *settings, ErrorLogger *errorLogger) override {
+    void runSimplifiedChecks(const Tokenizer *tokenizer, const Settings *settings, ErrorLogger *errorLogger) OVERRIDE {
         CheckString checkString(tokenizer, settings, errorLogger);
 
         // Checks
@@ -103,7 +103,7 @@ private:
     void suspiciousStringCompareError_char(const Token* tok, const std::string& var);
     void overlappingStrcmpError(const Token* eq0, const Token *ne0);
 
-    void getErrorMessages(ErrorLogger *errorLogger, const Settings *settings) const override {
+    void getErrorMessages(ErrorLogger *errorLogger, const Settings *settings) const OVERRIDE {
         CheckString c(nullptr, settings, errorLogger);
 
         c.stringLiteralWriteError(nullptr, nullptr);
@@ -113,6 +113,7 @@ private:
         c.suspiciousStringCompareError(nullptr, "foo");
         c.suspiciousStringCompareError_char(nullptr, "foo");
         c.incorrectStringBooleanError(nullptr, "\"Hello World\"");
+        c.incorrectStringBooleanError(nullptr, "\'x\'");
         c.alwaysTrueFalseStringCompareError(nullptr, "str1", "str2");
         c.alwaysTrueStringVariableCompareError(nullptr, "varname1", "varname2");
         c.overlappingStrcmpError(nullptr, nullptr);
@@ -122,14 +123,14 @@ private:
         return "String";
     }
 
-    std::string classInfo() const override {
+    std::string classInfo() const OVERRIDE {
         return "Detect misusage of C-style strings:\n"
                "- overlapping buffers passed to sprintf as source and destination\n"
                "- incorrect length arguments for 'substr' and 'strncmp'\n"
                "- suspicious condition (runtime comparison of string literals)\n"
-               "- suspicious condition (string literals as boolean)\n"
-               "- suspicious comparison of a string literal with a char* variable\n"
-               "- suspicious comparison of '\\0' with a char* variable\n"
+               "- suspicious condition (string/char literals as boolean)\n"
+               "- suspicious comparison of a string literal with a char\\* variable\n"
+               "- suspicious comparison of '\\0' with a char\\* variable\n"
                "- overlapping strcmp() expression\n";
     }
 };

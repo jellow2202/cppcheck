@@ -1,6 +1,6 @@
 /*
  * Cppcheck - A tool for static C/C++ code analysis
- * Copyright (C) 2007-2017 Cppcheck team.
+ * Copyright (C) 2007-2018 Cppcheck team.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -38,12 +38,15 @@ public:
 
 private:
 
-    void run() override {
+    void run() OVERRIDE {
         TEST_CASE(setDefines);
         TEST_CASE(setIncludePaths1);
         TEST_CASE(setIncludePaths2);
         TEST_CASE(setIncludePaths3); // macro names are case insensitive
-        TEST_CASE(importCompileCommands);
+        TEST_CASE(importCompileCommands1);
+        TEST_CASE(importCompileCommands2); // #8563
+        TEST_CASE(importCompileCommands3); // check with existing trailing / in directory
+        TEST_CASE(importCompileCommands4); // only accept certain file types
     }
 
     void setDefines() const {
@@ -91,16 +94,47 @@ private:
         ASSERT_EQUALS("c:/abc/other/", fs.includePaths.front());
     }
 
-    void importCompileCommands() const {
-
+    void importCompileCommands1() const {
         const char json[] = "[ { \"directory\": \"/tmp\","
-                            "\"command\": \"gcc -I/tmp -DTEST1 -DTEST2=2  -DTEST3=\\\"\\\\\\\"3\\\\\\\"\\\" -o /tmp/src.o -c /tmp/src.c\","
+                            "\"command\": \"gcc -I/tmp -DCFGDIR=\\\\\\\"/usr/local/share/Cppcheck\\\\\\\" -DTEST1 -DTEST2=2 -o /tmp/src.o -c /tmp/src.c\","
                             "\"file\": \"/tmp/src.c\" } ]";
         std::istringstream istr(json);
         TestImporter importer;
         importer.importCompileCommands(istr);
         ASSERT_EQUALS(1, importer.fileSettings.size());
-        ASSERT_EQUALS("TEST1=1;TEST2=2;TEST3=\"\\\"3\\\"\"", importer.fileSettings.begin()->defines);
+        ASSERT_EQUALS("CFGDIR=\"/usr/local/share/Cppcheck\";TEST1=1;TEST2=2", importer.fileSettings.begin()->defines);
+    }
+
+    void importCompileCommands2() const {
+        const char json[] = "[ { \"directory\": \"/tmp\","
+                            "\"command\": \"gcc -c src.c\","
+                            "\"file\": \"src.c\" } ]";
+        std::istringstream istr(json);
+        TestImporter importer;
+        importer.importCompileCommands(istr);
+        ASSERT_EQUALS(1, importer.fileSettings.size());
+        ASSERT_EQUALS("/tmp/src.c", importer.fileSettings.begin()->filename);
+    }
+
+    void importCompileCommands3() const {
+        const char json[] = "[ { \"directory\": \"/tmp/\","
+                            "\"command\": \"gcc -c src.c\","
+                            "\"file\": \"src.c\" } ]";
+        std::istringstream istr(json);
+        TestImporter importer;
+        importer.importCompileCommands(istr);
+        ASSERT_EQUALS(1, importer.fileSettings.size());
+        ASSERT_EQUALS("/tmp/src.c", importer.fileSettings.begin()->filename);
+    }
+
+    void importCompileCommands4() const {
+        const char json[] = "[ { \"directory\": \"/tmp/\","
+                            "\"command\": \"gcc -c src.mm\","
+                            "\"file\": \"src.mm\" } ]";
+        std::istringstream istr(json);
+        TestImporter importer;
+        importer.importCompileCommands(istr);
+        ASSERT_EQUALS(0, importer.fileSettings.size());
     }
 };
 

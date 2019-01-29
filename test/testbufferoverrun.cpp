@@ -73,7 +73,9 @@ private:
         checkBufferOverrun.runSimplifiedChecks(&tokenizer, &settings, this);
     }
 
-    void run() override {
+    void run() OVERRIDE {
+        LOAD_LIB_2(settings0.library, "std.cfg");
+
         settings0.addEnabled("warning");
         settings0.addEnabled("style");
         settings0.addEnabled("portability");
@@ -224,6 +226,8 @@ private:
         TEST_CASE(crash1);  // Ticket #1587 - crash
         TEST_CASE(crash2);  // Ticket #3034 - crash
         TEST_CASE(crash3);  // Ticket #5426 - crash
+        TEST_CASE(crash4);  // Ticket #8679 - crash
+        TEST_CASE(crash5);  // Ticket #8644 - crash
 
         TEST_CASE(executionPaths1);
         TEST_CASE(executionPaths2);
@@ -231,7 +235,7 @@ private:
         TEST_CASE(executionPaths5);   // Ticket #2920 - False positive when size is unknown
         TEST_CASE(executionPaths6);   // unknown types
 
-        TEST_CASE(cmdLineArgs1);
+        TEST_CASE(insecureCmdLineArgs);
         TEST_CASE(checkBufferAllocatedWithStrlen);
 
         TEST_CASE(scope);   // handling different scopes
@@ -364,7 +368,7 @@ private:
               "    str[i] = 0;\n"
               "}\n"
               "void b() { a(16); }");
-        ASSERT_EQUALS("[test.cpp:4]: (error) Array 'str[16]' accessed at index 16, which is out of bounds.\n", errout.str());
+        TODO_ASSERT_EQUALS("[test.cpp:4]: (error) Array 'str[16]' accessed at index 16, which is out of bounds.\n", "", errout.str());
     }
 
 
@@ -2800,6 +2804,13 @@ private:
               "  p = (unsigned char *) buf + sizeof (buf);\n"
               "}", false, "6350.c");
         ASSERT_EQUALS("", errout.str());
+
+        check("int f() {\n"
+              "    const char   d[] = \"0123456789\";\n"
+              "    char *cp = d + 3;\n"
+              "    return cp - d;\n"
+              "}\n");
+        ASSERT_EQUALS("", errout.str());
     }
 
     void pointer_out_of_bounds_2() {
@@ -3091,6 +3102,13 @@ private:
               "    tab4[20] = 0;\n"
               "}");
         ASSERT_EQUALS("[test.cpp:4]: (error) Array 'tab4[20]' accessed at index 20, which is out of bounds.\n", errout.str());
+
+        check("void f() {\n" // #8721
+              "  unsigned char **cache = malloc(32);\n"
+              "  cache[i] = malloc(65536);\n"
+              "  cache[i][0xFFFF] = 0;\n"
+              "}");
+        ASSERT_EQUALS("", errout.str());
     }
 
     // statically allocated buffer
@@ -3112,6 +3130,14 @@ private:
         check("void foo() {\n"
               "    const char *s = \"\";\n"
               "    s = y();\n"
+              "    s[10] = 0;\n"
+              "}");
+        ASSERT_EQUALS("", errout.str());
+
+        check("void foo()\n" // #7718
+              "{\n"
+              "    std::string s = \"123\";\n"
+              "    s.resize(100);\n"
               "    s[10] = 0;\n"
               "}");
         ASSERT_EQUALS("", errout.str());
@@ -3639,6 +3665,27 @@ private:
               "void d() { struct b *f; f = malloc(108); }");
     }
 
+    void crash4() { // #8679
+        check("__thread void *thread_local_var; "
+              "int main() { "
+              "  thread_local_var = malloc(1337); "
+              "  return 0; "
+              "}");
+
+        check("thread_local void *thread_local_var; "
+              "int main() { "
+              "  thread_local_var = malloc(1337); "
+              "  return 0; "
+              "}");
+    }
+
+    void crash5() { // 8644 - token has varId() but variable() is null
+        check("int a() {\n"
+              "    void b(char **dst) {\n"
+              "        *dst = malloc(50);\n"
+              "    }\n"
+              "}");
+    }
 
     void executionPaths1() {
         check("void f(int a)\n"
@@ -3710,8 +3757,48 @@ private:
         ASSERT_EQUALS("[test.cpp:4]: (error) Array 'a[10]' accessed at index 1000, which is out of bounds.\n", errout.str());
     }
 
-    void cmdLineArgs1() {
-        check("int main(int argc, char* argv[])\n"
+    void insecureCmdLineArgs() {
+        check("int main(int argc, char *argv[])\n"
+              "{\n"
+              "    if(argc>1)\n"
+              "    {\n"
+              "        char buf[2];\n"
+              "        char *p = strdup(argv[1]);\n"
+              "        strcpy(buf,p);\n"
+              "        free(p);\n"
+              "    }\n"
+              "    return 0;\n"
+              "}");
+        ASSERT_EQUALS("[test.cpp:7]: (error) Buffer overrun possible for long command line arguments.\n", errout.str());
+
+        check("int main(int argc, char *argv[])\n"
+              "{\n"
+              "    if(argc>1)\n"
+              "    {\n"
+              "        char buf[2] = {'\\0','\\0'};\n"
+              "        char *p = strdup(argv[1]);\n"
+              "        strcat(buf,p);\n"
+              "        free(p);\n"
+              "    }\n"
+              "    return 0;\n"
+              "}");
+        ASSERT_EQUALS("[test.cpp:7]: (error) Buffer overrun possible for long command line arguments.\n", errout.str());
+
+        check("int main(const int argc, char* argv[])\n"
+              "{\n"
+              "    char prog[10];\n"
+              "    strcpy(prog, argv[0]);\n"
+              "}");
+        ASSERT_EQUALS("[test.cpp:4]: (error) Buffer overrun possible for long command line arguments.\n", errout.str());
+
+        check("int main(int argc, const char* argv[])\n"
+              "{\n"
+              "    char prog[10];\n"
+              "    strcpy(prog, argv[0]);\n"
+              "}");
+        ASSERT_EQUALS("[test.cpp:4]: (error) Buffer overrun possible for long command line arguments.\n", errout.str());
+
+        check("int main(const int argc, const char* argv[])\n"
               "{\n"
               "    char prog[10];\n"
               "    strcpy(prog, argv[0]);\n"
@@ -3733,6 +3820,27 @@ private:
         ASSERT_EQUALS("[test.cpp:4]: (error) Buffer overrun possible for long command line arguments.\n", errout.str());
 
         check("int main(int argc, char **argv, char **envp)\n"
+              "{\n"
+              "    char prog[10] = {'\\0'};\n"
+              "    strcat(prog, argv[0]);\n"
+              "}");
+        ASSERT_EQUALS("[test.cpp:4]: (error) Buffer overrun possible for long command line arguments.\n", errout.str());
+
+        check("int main(const int argc, const char **argv, char **envp)\n"
+              "{\n"
+              "    char prog[10] = {'\\0'};\n"
+              "    strcat(prog, argv[0]);\n"
+              "}");
+        ASSERT_EQUALS("[test.cpp:4]: (error) Buffer overrun possible for long command line arguments.\n", errout.str());
+
+        check("int main(int argc, const char **argv, char **envp)\n"
+              "{\n"
+              "    char prog[10] = {'\\0'};\n"
+              "    strcat(prog, argv[0]);\n"
+              "}");
+        ASSERT_EQUALS("[test.cpp:4]: (error) Buffer overrun possible for long command line arguments.\n", errout.str());
+
+        check("int main(const int argc, char **argv, char **envp)\n"
               "{\n"
               "    char prog[10] = {'\\0'};\n"
               "    strcat(prog, argv[0]);\n"
@@ -4029,7 +4137,7 @@ private:
               "   int a[sz];\n"
               "}\n"
               "void x() { f(-100); }");
-        ASSERT_EQUALS("[test.cpp:2]: (error) Declaration of array 'a' with negative size is undefined behaviour\n", errout.str());
+        TODO_ASSERT_EQUALS("[test.cpp:2]: (error) Declaration of array 'a' with negative size is undefined behaviour\n", "", errout.str());
 
         // don't warn for constant sizes -> this is a compiler error so this is used for static assertions for instance
         check("int x, y;\n"

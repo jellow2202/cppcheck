@@ -186,13 +186,11 @@ static void addFiles2(std::map<std::string, std::size_t> &files,
     if (stat(path.c_str(), &file_stat) != -1) {
         if ((file_stat.st_mode & S_IFMT) == S_IFDIR) {
             DIR * dir = opendir(path.c_str());
-
             if (!dir)
                 return;
 
             dirent entry;
             dirent * dir_result;
-
             std::string new_path;
             new_path.reserve(path.length() + 100);// prealloc some memory to avoid constant new/deletes in loop
 
@@ -204,12 +202,18 @@ static void addFiles2(std::map<std::string, std::size_t> &files,
 
                 new_path = path + '/' + dir_result->d_name;
 
-                if (dir_result->d_type == DT_DIR || (dir_result->d_type == DT_UNKNOWN && FileLister::isDirectory(new_path))) {
+#if defined(_DIRENT_HAVE_D_TYPE) || defined(_BSD_SOURCE)
+                bool path_is_directory = (dir_result->d_type == DT_DIR || (dir_result->d_type == DT_UNKNOWN && FileLister::isDirectory(new_path)));
+#else
+                bool path_is_directory = FileLister::isDirectory(new_path);
+#endif
+                if (path_is_directory) {
                     if (recursive && !ignored.match(new_path)) {
                         addFiles2(files, new_path, extra, recursive, ignored);
                     }
                 } else {
                     if (Path::acceptFile(new_path, extra) && !ignored.match(new_path)) {
+                        stat(new_path.c_str(), &file_stat);
                         files[new_path] = file_stat.st_size;
                     }
                 }

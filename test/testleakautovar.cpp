@@ -1,6 +1,6 @@
 /*
  * Cppcheck - A tool for static C/C++ code analysis
- * Copyright (C) 2007-2017 Cppcheck team.
+ * Copyright (C) 2007-2018 Cppcheck team.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -32,7 +32,7 @@ public:
 private:
     Settings settings;
 
-    void run() override {
+    void run() OVERRIDE {
         int id = 0;
         while (!settings.library.ismemory(++id));
         settings.library.setalloc("malloc", id, -1);
@@ -98,6 +98,10 @@ private:
         TEST_CASE(ifelse7); // #5576 - if (fd < 0)
         TEST_CASE(ifelse8); // #5747 - if (fd == -1)
         TEST_CASE(ifelse9); // #5273 - if (X(p==NULL, 0))
+        TEST_CASE(ifelse10); // #8794 - if (!(x!=NULL))
+        TEST_CASE(ifelse11); // #8365 - if (NULL == (p = malloc(4)))
+        TEST_CASE(ifelse12); // #8340 - if ((*p = malloc(4)) == NULL)
+        TEST_CASE(ifelse13); // #8392
 
         // switch
         TEST_CASE(switch1);
@@ -1150,6 +1154,54 @@ private:
         ASSERT_EQUALS("", errout.str());
     }
 
+    void ifelse10() { // #8794
+        check("void f() {\n"
+              "    void *x = malloc(1U);\n"
+              "    if (!(x != NULL))\n"
+              "        return;\n"
+              "    free(x);\n"
+              "}");
+        ASSERT_EQUALS("", errout.str());
+    }
+
+    void ifelse11() { // #8365
+        check("void f() {\n"
+              "    void *p;\n"
+              "    if (NULL == (p = malloc(4)))\n"
+              "        return;\n"
+              "    free(p);\n"
+              "}");
+        ASSERT_EQUALS("", errout.str());
+    }
+
+    void ifelse12() { // #8340
+        check("void f(char **p) {\n"
+              "    if ((*p = malloc(4)) == NULL)\n"
+              "        return;\n"
+              "}");
+        ASSERT_EQUALS("", errout.str());
+    }
+
+    void ifelse13() { // #8392
+        check("int f(int fd, const char *mode) {\n"
+              "    char *path;\n"
+              "    if (fd == -1 || (path = (char *)malloc(10)) == NULL)\n"
+              "        return 1;\n"
+              "    free(path);\n"
+              "    return 0;\n"
+              "}");
+        ASSERT_EQUALS("", errout.str());
+
+        check("int f(int fd, const char *mode) {\n"
+              "    char *path;\n"
+              "    if ((path = (char *)malloc(10)) == NULL || fd == -1)\n"
+              "        return 1;\n" // <- memory leak
+              "    free(path);\n"
+              "    return 0;\n"
+              "}");
+        TODO_ASSERT_EQUALS("[test.cpp:4] memory leak", "", errout.str());
+    }
+
     void switch1() {
         check("void f() {\n"
               "    char *p = 0;\n"
@@ -1604,7 +1656,7 @@ private:
         checkLeak.runSimplifiedChecks(&tokenizer, &settings, this);
     }
 
-    void run() override {
+    void run() OVERRIDE {
         LOAD_LIB_2(settings.library, "windows.cfg");
 
         TEST_CASE(heapDoubleFree);

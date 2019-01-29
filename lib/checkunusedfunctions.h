@@ -51,8 +51,8 @@ public:
     }
 
     static void clear() {
-        instance._functions.clear();
-        instance._functionCalls.clear();
+        instance.mFunctions.clear();
+        instance.mFunctionCalls.clear();
     }
 
     // Parse current tokens and determine..
@@ -64,10 +64,10 @@ public:
     bool check(ErrorLogger * const errorLogger, const Settings& settings);
 
     /** @brief Parse current TU and extract file info */
-    Check::FileInfo *getFileInfo(const Tokenizer *tokenizer, const Settings *settings) const override;
+    Check::FileInfo *getFileInfo(const Tokenizer *tokenizer, const Settings *settings) const OVERRIDE;
 
     /** @brief Analyse all file infos for all TU */
-    bool analyseWholeProgram(const std::list<Check::FileInfo*> &fileInfo, const Settings& settings, ErrorLogger &errorLogger) override;
+    bool analyseWholeProgram(const CTU::FileInfo *ctu, const std::list<Check::FileInfo*> &fileInfo, const Settings& settings, ErrorLogger &errorLogger) OVERRIDE;
 
     static CheckUnusedFunctions instance;
 
@@ -78,7 +78,7 @@ public:
 
 private:
 
-    void getErrorMessages(ErrorLogger *errorLogger, const Settings *settings) const override {
+    void getErrorMessages(ErrorLogger *errorLogger, const Settings *settings) const OVERRIDE {
         CheckUnusedFunctions c(nullptr, settings, errorLogger);
         c.unusedFunctionError(errorLogger, emptyString, 0, "funcName");
     }
@@ -93,14 +93,14 @@ private:
     /**
      * Dummy implementation, just to provide error for --errorlist
      */
-    void runSimplifiedChecks(const Tokenizer* /*tokenizer*/, const Settings* /*settings*/, ErrorLogger* /*errorLogger*/) override {
+    void runSimplifiedChecks(const Tokenizer* /*tokenizer*/, const Settings* /*settings*/, ErrorLogger* /*errorLogger*/) OVERRIDE {
     }
 
     static std::string myName() {
         return "Unused functions";
     }
 
-    std::string classInfo() const override {
+    std::string classInfo() const OVERRIDE {
         return "Check for functions that are never called\n";
     }
 
@@ -115,7 +115,7 @@ private:
         bool   usedOtherFile;
     };
 
-    std::map<std::string, FunctionUsage> _functions;
+    std::map<std::string, FunctionUsage> mFunctions;
 
     class CPPCHECKLIB FunctionDecl {
     public:
@@ -123,8 +123,8 @@ private:
         std::string functionName;
         unsigned int lineNumber;
     };
-    std::list<FunctionDecl> _functionDecl;
-    std::set<std::string> _functionCalls;
+    std::list<FunctionDecl> mFunctionDecl;
+    std::set<std::string> mFunctionCalls;
 };
 /// @}
 //---------------------------------------------------------------------------

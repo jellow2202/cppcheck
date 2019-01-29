@@ -1,6 +1,6 @@
 /*
  * Cppcheck - A tool for static C/C++ code analysis
- * Copyright (C) 2007-2017 Cppcheck team.
+ * Copyright (C) 2007-2018 Cppcheck team.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -32,6 +32,7 @@ class Settings;
 class SymbolDatabase;
 class Token;
 class TokenList;
+class Variable;
 
 namespace ValueFlow {
     class CPPCHECKLIB Value {
@@ -39,7 +40,21 @@ namespace ValueFlow {
         typedef std::pair<const Token *, std::string> ErrorPathItem;
         typedef std::list<ErrorPathItem> ErrorPath;
 
-        explicit Value(long long val = 0) : valueType(INT), intvalue(val), tokvalue(nullptr), floatValue(0.0), moveKind(NonMovedVariable), varvalue(val), condition(nullptr), varId(0U), conditional(false), defaultArg(false), valueKind(ValueKind::Possible) {}
+        explicit Value(long long val = 0)
+            : valueType(INT),
+              intvalue(val),
+              tokvalue(nullptr),
+              floatValue(0.0),
+              moveKind(NonMovedVariable),
+              varvalue(val),
+              condition(nullptr),
+              varId(0U),
+              conditional(false),
+              defaultArg(false),
+              lifetimeKind(Object),
+              lifetimeScope(Local),
+              valueKind(ValueKind::Possible)
+        {}
         Value(const Token *c, long long val);
 
         bool operator==(const Value &rhs) const {
@@ -65,6 +80,13 @@ namespace ValueFlow {
                 break;
             case UNINIT:
                 break;
+            case CONTAINER_SIZE:
+                if (intvalue != rhs.intvalue)
+                    return false;
+                break;
+            case LIFETIME:
+                if (tokvalue != rhs.tokvalue)
+                    return false;
             };
 
             return varvalue == rhs.varvalue &&
@@ -77,7 +99,7 @@ namespace ValueFlow {
 
         std::string infoString() const;
 
-        enum ValueType { INT, TOK, FLOAT, MOVED, UNINIT } valueType;
+        enum ValueType { INT, TOK, FLOAT, MOVED, UNINIT, CONTAINER_SIZE, LIFETIME } valueType;
         bool isIntValue() const {
             return valueType == INT;
         }
@@ -92,6 +114,20 @@ namespace ValueFlow {
         }
         bool isUninitValue() const {
             return valueType == UNINIT;
+        }
+        bool isContainerSizeValue() const {
+            return valueType == CONTAINER_SIZE;
+        }
+        bool isLifetimeValue() const {
+            return valueType == LIFETIME;
+        }
+
+        bool isLocalLifetimeValue() const {
+            return valueType == LIFETIME && lifetimeScope == Local;
+        }
+
+        bool isArgumentLifetimeValue() const {
+            return valueType == LIFETIME && lifetimeScope == Argument;
         }
 
         /** int value */
@@ -123,6 +159,10 @@ namespace ValueFlow {
         /** Is this value passed as default parameter to the function? */
         bool defaultArg;
 
+        enum LifetimeKind {Object, Lambda, Iterator} lifetimeKind;
+
+        enum LifetimeScope { Local, Argument } lifetimeScope;
+
         static const char * toString(MoveKind moveKind) {
             switch (moveKind) {
             case NonMovedVariable:
@@ -136,7 +176,7 @@ namespace ValueFlow {
         }
 
         /** How known is this value */
-        enum ValueKind {
+        enum class ValueKind {
             /** This value is possible, other unlisted values may also be possible */
             Possible,
             /** Only listed values are possible */
@@ -188,5 +228,9 @@ namespace ValueFlow {
 
     std::string eitherTheConditionIsRedundant(const Token *condition);
 }
+
+const Variable *getLifetimeVariable(const Token *tok, ValueFlow::Value::ErrorPath &errorPath);
+
+std::string lifetimeType(const Token *tok, const ValueFlow::Value *val);
 
 #endif // valueflowH

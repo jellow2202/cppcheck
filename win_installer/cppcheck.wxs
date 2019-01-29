@@ -44,6 +44,11 @@
               <File Id='qwindowsdll' Name='qwindows.dll' Source='$(var.QtDllDir)\platforms\qwindows.dll' />
             </Component>
           </Directory>
+          <Directory Id='QtStylesFolder' Name='styles'>
+            <Component Id='QtStyles' DiskId='1' Guid='$(var.qtstylesGUID)'>
+              <File Id='qwindowsvistastyledll' Name='qwindowsvistastyle.dll' Source='$(var.QtDllDir)\styles\qwindowsvistastyle.dll' />
+            </Component>
+          </Directory>
           <Directory Id='TranslationsFolder' Name='lang'>
             <Component Id='GuiTranslations' Guid='$(var.guiTranslationsGUID)'>
               <File Id='cppcheck_de.qm' Name='cppcheck_de.qm' Source='$(var.TranslationsDir)\cppcheck_de.qm' />
@@ -93,6 +98,7 @@
               <File Id='cppcheckdata.py' Name='cppcheckdata.py' Source='$(var.AddonsDir)\cppcheckdata.py' />
               <File Id='cert.py' Name='cert.py' Source='$(var.AddonsDir)\cert.py' />
               <File Id='findcasts.py' Name='findcasts.py' Source='$(var.AddonsDir)\findcasts.py' />
+              <File Id='misc.py' Name='misc.py' Source='$(var.AddonsDir)\misc.py' />
               <File Id='misra.py' Name='misra.py' Source='$(var.AddonsDir)\misra.py' />
               <File Id='naming.py' Name='naming.py' Source='$(var.AddonsDir)\naming.py' />
               <File Id='threadsafety.py' Name='threadsafety.py' Source='$(var.AddonsDir)\threadsafety.py' />
@@ -134,6 +140,7 @@
         <ComponentRef Id='RegistryEntries' />
         <ComponentRef Id='GuiExecutable' />
         <ComponentRef Id='QtPlatforms' />
+        <ComponentRef Id='QtStyles' />
         <Feature Id='Translations' Title='GUI Translations' AllowAdvertise='no' Description='Translations for graphical user interface' Level='1'>
           <ComponentRef Id='GuiTranslations' />
         </Feature>

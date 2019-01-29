@@ -1,6 +1,6 @@
 /*
  * Cppcheck - A tool for static C/C++ code analysis
- * Copyright (C) 2007-2017 Cppcheck team.
+ * Copyright (C) 2007-2018 Cppcheck team.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -20,13 +20,14 @@
 
 #include "valueflow.h"
 
-bool Settings::_terminated;
+bool Settings::mTerminated;
 
 Settings::Settings()
-    : _enabled(0),
-      debug(false),
+    : mEnabled(0),
+      debugSimplified(false),
       debugnormal(false),
       debugwarnings(false),
+      debugtemplate(false),
       dump(false),
       exceptionHandling(false),
       inconclusive(false),
@@ -72,25 +73,25 @@ std::string Settings::addEnabled(const std::string &str)
     }
 
     if (str == "all") {
-        _enabled |= WARNING | STYLE | PERFORMANCE | PORTABILITY | INFORMATION | UNUSED_FUNCTION | MISSING_INCLUDE;
+        mEnabled |= WARNING | STYLE | PERFORMANCE | PORTABILITY | INFORMATION | UNUSED_FUNCTION | MISSING_INCLUDE;
     } else if (str == "warning") {
-        _enabled |= WARNING;
+        mEnabled |= WARNING;
     } else if (str == "style") {
-        _enabled |= STYLE;
+        mEnabled |= STYLE;
     } else if (str == "performance") {
-        _enabled |= PERFORMANCE;
+        mEnabled |= PERFORMANCE;
     } else if (str == "portability") {
-        _enabled |= PORTABILITY;
+        mEnabled |= PORTABILITY;
     } else if (str == "information") {
-        _enabled |= INFORMATION | MISSING_INCLUDE;
+        mEnabled |= INFORMATION | MISSING_INCLUDE;
     } else if (str == "unusedFunction") {
-        _enabled |= UNUSED_FUNCTION;
+        mEnabled |= UNUSED_FUNCTION;
     } else if (str == "missingInclude") {
-        _enabled |= MISSING_INCLUDE;
+        mEnabled |= MISSING_INCLUDE;
     }
 #ifdef CHECK_INTERNAL
     else if (str == "internal") {
-        _enabled |= INTERNAL;
+        mEnabled |= INTERNAL;
     }
 #endif
     else {

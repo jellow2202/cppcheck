@@ -22,6 +22,7 @@
 #include "suppressions.h"
 #include "testsuite.h"
 #include "threadexecutor.h"
+#include "path.h"
 
 #include <cstddef>
 #include <list>
@@ -37,7 +38,7 @@ public:
 
 private:
 
-    void run() override {
+    void run() OVERRIDE {
         TEST_CASE(suppressionsBadId1);
         TEST_CASE(suppressionsDosFormat);     // Ticket #1836
         TEST_CASE(suppressionsFileNameWithColon);    // Ticket #1919 - filename includes colon
@@ -46,9 +47,12 @@ private:
         TEST_CASE(suppressionsSettings);
         TEST_CASE(suppressionsMultiFile);
         TEST_CASE(suppressionsPathSeparator);
+        TEST_CASE(suppressionsLine0);
+        TEST_CASE(suppressionsFileComment);
 
         TEST_CASE(inlinesuppress);
         TEST_CASE(inlinesuppress_symbolname);
+        TEST_CASE(inlinesuppress_comment);
 
         TEST_CASE(globalSuppressions); // Testing that global suppressions work (#8515)
 
@@ -57,12 +61,14 @@ private:
         TEST_CASE(suppressionWithRelativePaths); // #4733
         TEST_CASE(suppressingSyntaxErrors); // #7076
         TEST_CASE(suppressingSyntaxErrorsInline); // #5917
-
+        TEST_CASE(suppressingSyntaxErrorsWhileFileRead) // PR #1333
         TEST_CASE(symbol);
 
         TEST_CASE(unusedFunction);
 
         TEST_CASE(matchglob);
+
+        TEST_CASE(suppressingSyntaxErrorAndExitCode);
     }
 
     void suppressionsBadId1() const {
@@ -216,7 +222,7 @@ private:
         for (std::map<std::string, std::size_t>::const_iterator i = files.begin(); i != files.end(); ++i)
             executor.addFileContent(i->first, code);
 
-        unsigned int exitCode = executor.check();
+        const unsigned int exitCode = executor.check();
 
         std::map<std::string, std::string> files_for_report;
         for (std::map<std::string, std::size_t>::const_iterator file = files.begin(); file != files.end(); ++file)
@@ -400,6 +406,24 @@ private:
         ASSERT_EQUALS(true, s2.isSuppressed(errorMessage("abc", "include/1.h", 142)));
     }
 
+    void suppressionsLine0() {
+        Suppressions suppressions;
+        suppressions.addSuppressionLine("syntaxError:*:0");
+        ASSERT_EQUALS(true, suppressions.isSuppressed(errorMessage("syntaxError", "test.cpp", 0)));
+    }
+
+    void suppressionsFileComment() {
+        std::istringstream file1("# comment\nabc");
+        Suppressions suppressions1;
+        suppressions1.parseFile(file1);
+        ASSERT_EQUALS(true, suppressions1.isSuppressed(errorMessage("abc", "test.cpp", 123)));
+
+        std::istringstream file2("// comment\nabc");
+        Suppressions suppressions2;
+        suppressions2.parseFile(file2);
+        ASSERT_EQUALS(true, suppressions2.isSuppressed(errorMessage("abc", "test.cpp", 123)));
+    }
+
     void inlinesuppress() {
         Suppressions::Suppression s;
         std::string msg;
@@ -432,6 +456,17 @@ private:
                          "}\n",
                          "");
         ASSERT_EQUALS("[test.cpp:4]: (error) Uninitialized variable: a\n", errout.str());
+    }
+
+    void inlinesuppress_comment() {
+        Suppressions::Suppression s;
+        std::string errMsg;
+        ASSERT_EQUALS(true, s.parseComment("// cppcheck-suppress abc ; some comment", &errMsg));
+        ASSERT_EQUALS("", errMsg);
+        ASSERT_EQUALS(true, s.parseComment("// cppcheck-suppress abc // some comment", &errMsg));
+        ASSERT_EQUALS("", errMsg);
+        ASSERT_EQUALS(true, s.parseComment("// cppcheck-suppress abc -- some comment", &errMsg));
+        ASSERT_EQUALS("", errMsg);
     }
 
     void globalSuppressions() { // Testing that Cppcheck::useGlobalSuppressions works (#8515)
@@ -511,6 +546,25 @@ private:
         ASSERT_EQUALS("", errout.str());
     }
 
+    void suppressingSyntaxErrorsWhileFileRead() { // syntaxError while file read should be suppressable (PR #1333)
+        std::map<std::string, std::string> files;
+        files["test.cpp"] = "CONST (genType, KS_CONST) genService[KS_CFG_NR_OF_NVM_BLOCKS] =\n"
+                            "{\n"
+                            "[!VAR \"BC\" = \"$BC + 1\"!][!//\n"
+                            "[!IF \"(as:modconf('Ks')[1]/KsGeneral/KsType = 'KS_CFG_TYPE_KS_MASTER') and\n"
+                            "      (as:modconf('Ks')[1]/KsGeneral/KsUseShe = 'true')\"!][!//\n"
+                            "  {\n"
+                            "      &varNB_GetErrorStatus,\n"
+                            "      &varNB_WriteBlock,\n"
+                            "      &varNB_ReadBlock\n"
+                            "  },\n"
+                            "[!VAR \"BC\" = \"$BC + 1\"!][!//\n"
+                            "[!ENDIF!][!//\n"
+                            "};";
+        checkSuppression(files, "syntaxError:test.cpp:4");
+        ASSERT_EQUALS("", errout.str());
+    }
+
     void symbol() {
         Suppressions::Suppression s;
         s.errorId = "foo";
@@ -552,6 +606,38 @@ private:
         ASSERT_EQUALS(true, Suppressions::matchglob("?y?", "xyz"));
         ASSERT_EQUALS(true, Suppressions::matchglob("?/?/?", "x/y/z"));
     }
+
+    void suppressingSyntaxErrorAndExitCode() {
+        std::map<std::string, std::string> files;
+        files["test.cpp"] = "fi if;";
+
+        ASSERT_EQUALS(0, checkSuppression(files, "*:test.cpp"));
+        ASSERT_EQUALS("", errout.str());
+
+        // multi files, but only suppression one
+        std::map<std::string, std::string> mfiles;
+        mfiles["test.cpp"] = "fi if;";
+        mfiles["test2.cpp"] = "fi if";
+        ASSERT_EQUALS(1, checkSuppression(mfiles, "*:test.cpp"));
+        ASSERT_EQUALS("[test2.cpp:1]: (error) syntax error\n", errout.str());
+
+        // multi error in file, but only suppression one error
+        std::map<std::string, std::string> file2;
+        file2["test.cpp"] = "fi fi\n"
+                            "if if;";
+        ASSERT_EQUALS(1, checkSuppression(file2, "*:test.cpp:1"));  // suppress all error at line 1 of test.cpp
+        ASSERT_EQUALS("[test.cpp:2]: (error) syntax error\n", errout.str());
+
+        // multi error in file, but only suppression one error (2)
+        std::map<std::string, std::string> file3;
+        file3["test.cpp"] = "void f(int x, int y){\n"
+                            "    int a = x/0;\n"
+                            "    int b = y/0;\n"
+                            "}\n"
+                            "f(0, 1);\n";
+        ASSERT_EQUALS(1, checkSuppression(file3, "zerodiv:test.cpp:3"));  // suppress 'errordiv' at line 3 of test.cpp
+    }
+
 };
 
 REGISTER_TEST(TestSuppressions)

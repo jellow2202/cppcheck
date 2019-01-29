@@ -30,10 +30,9 @@
 #include <QDate>
 #include <QMenu>
 #include <QClipboard>
+#include "resultsview.h"
 #include "common.h"
 #include "erroritem.h"
-#include "resultsview.h"
-#include "report.h"
 #include "txtreport.h"
 #include "xmlreport.h"
 #include "xmlreportv2.h"
@@ -332,20 +331,15 @@ void ResultsView::readErrorsXml(const QString &filename)
         return;
     }
 
-    XmlReport *report = new XmlReportV2(filename);
-
+    XmlReportV2 report(filename);
     QList<ErrorItem> errors;
-    if (report) {
-        if (report->open())
-            errors = report->read();
-        else {
-            QMessageBox msgBox;
-            msgBox.setText(tr("Failed to read the report."));
-            msgBox.setIcon(QMessageBox::Critical);
-            msgBox.exec();
-        }
-        delete report;
-        report = NULL;
+    if (report.open()) {
+        errors = report.read();
+    } else {
+        QMessageBox msgBox;
+        msgBox.setText(tr("Failed to read the report."));
+        msgBox.setIcon(QMessageBox::Critical);
+        msgBox.exec();
     }
 
     ErrorItem item;
@@ -387,11 +381,8 @@ void ResultsView::updateDetails(const QModelIndex &index)
         return;
     }
 
-    const QString summary = data["summary"].toString();
     const QString message = data["message"].toString();
-    QString formattedMsg = QString("%1: %2\n%3: %4")
-                           .arg(tr("Summary")).arg(summary)
-                           .arg(tr("Message")).arg(message);
+    QString formattedMsg = message;
 
     const QString file0 = data["file0"].toString();
     if (!file0.isEmpty() && Path::isHeader(data["file"].toString().toStdString()))

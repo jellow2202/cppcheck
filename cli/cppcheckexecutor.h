@@ -1,6 +1,6 @@
 /*
  * Cppcheck - A tool for static C/C++ code analysis
- * Copyright (C) 2007-2017 Cppcheck team.
+ * Copyright (C) 2007-2018 Cppcheck team.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -69,17 +69,17 @@ public:
      *
      * @param outmsg Progress message e.g. "Checking main.cpp..."
      */
-    virtual void reportOut(const std::string &outmsg) override;
+    virtual void reportOut(const std::string &outmsg) OVERRIDE;
 
     /** xml output of errors */
-    virtual void reportErr(const ErrorLogger::ErrorMessage &msg) override;
+    virtual void reportErr(const ErrorLogger::ErrorMessage &msg) OVERRIDE;
 
-    void reportProgress(const std::string &filename, const char stage[], const std::size_t value) override;
+    void reportProgress(const std::string &filename, const char stage[], const std::size_t value) OVERRIDE;
 
     /**
      * Output information messages.
      */
-    virtual void reportInfo(const ErrorLogger::ErrorMessage &msg) override;
+    virtual void reportInfo(const ErrorLogger::ErrorMessage &msg) OVERRIDE;
 
     /**
      * Information about how many files have been checked
@@ -137,9 +137,9 @@ private:
      * Wrapper around check_internal
      *   - installs optional platform dependent signal handling
      *
-     * * @param cppcheck cppcheck instance
-    * @param argc from main()
-    * @param argv from main()
+     * @param cppcheck cppcheck instance
+     * @param argc from main()
+     * @param argv from main()
      **/
     int check_wrapper(CppCheck& cppcheck, int argc, const char* const argv[]);
 

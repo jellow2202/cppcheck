@@ -1,6 +1,6 @@
 /*
  * Cppcheck - A tool for static C/C++ code analysis
- * Copyright (C) 2007-2017 Cppcheck team.
+ * Copyright (C) 2007-2018 Cppcheck team.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -39,7 +39,7 @@ private:
     Settings settings_std;
     Settings settings_windows;
 
-    void run() override {
+    void run() OVERRIDE {
         LOAD_LIB_2(settings_std.library, "std.cfg");
         LOAD_LIB_2(settings_windows.library, "windows.cfg");
         settings0.addEnabled("portability");
@@ -373,6 +373,9 @@ private:
 
         // #7571
         ASSERT_EQUALS("; foo = foo + [ & ] ( ) { } ;", tok("; foo += [&]() {int i;};"));
+
+        // #8796
+        ASSERT_EQUALS("{ return ( a = b ) += c ; }", tok("{ return (a = b) += c; }"));
     }
 
 
@@ -2985,6 +2988,18 @@ private:
         }
 
         {
+            const char code[] = "struct {int a;} const array[3] = {0};";
+            const char expected[] = "struct Anonymous0 { int a ; } ; struct Anonymous0 const array [ 3 ] = { 0 } ;";
+            ASSERT_EQUALS(expected, tok(code, false));
+        }
+
+        {
+            const char code[] = "static struct {int a;} const array[3] = {0};";
+            const char expected[] = "struct Anonymous0 { int a ; } ; static struct Anonymous0 const array [ 3 ] = { 0 } ;";
+            ASSERT_EQUALS(expected, tok(code, false));
+        }
+
+        {
             const char code[] = "struct { } abc, def;";
             const char expected[] = "struct Anonymous0 { } ; struct Anonymous0 abc ; struct Anonymous0 def ;";
             ASSERT_EQUALS(expected, tok(code, false));
@@ -3257,6 +3272,7 @@ private:
         ASSERT_EQUALS("enum Anonymous0 { x , y , z } ; enum Anonymous0 d ; d = x ;", tok("enum { x, y, z } d(x);", false));
         ASSERT_EQUALS("enum Anonymous0 { x , y , z } ; enum Anonymous0 e ; e = x ;", tok("enum { x, y, z } e{x};", false));
         ASSERT_EQUALS("struct Anonymous0 { int i ; } ; struct Anonymous0 f ; f = { 0 } ;", tok("struct { int i; } f{0};", false));
+        ASSERT_EQUALS("struct Anonymous0 { } ; struct Anonymous0 x ; x = { 0 } ;", tok("struct {} x = {0};", false));
         ASSERT_EQUALS("enum G : short { x , y , z } ; enum G g ; g = x ;", tok("enum G : short { x, y, z } g(x);", false));
         ASSERT_EQUALS("enum H : short { x , y , z } ; enum H h ; h = x ;", tok("enum H : short { x, y, z } h{x};", false));
         ASSERT_EQUALS("enum class I : short { x , y , z } ; enum I i ; i = x ;", tok("enum class I : short { x, y, z } i(x);", false));
@@ -3269,7 +3285,7 @@ private:
         ASSERT_EQUALS("int foo ( ) { }", tok("inline int foo ( ) { }", true));
         ASSERT_EQUALS("int foo ( ) { }", tok("__inline int foo ( ) { }", true));
         ASSERT_EQUALS("int foo ( ) { }", tok("__forceinline int foo ( ) { }", true));
-        ASSERT_EQUALS("int foo ( ) { }", tok("constexpr int foo() { }", true));
+        ASSERT_EQUALS("const int foo ( ) { }", tok("constexpr int foo() { }", true));
         ASSERT_EQUALS("void f ( ) { int final [ 10 ] ; }", tok("void f() { int final[10]; }", true));
         ASSERT_EQUALS("int * p ;", tok("int * __restrict p;", "test.c"));
         ASSERT_EQUALS("int * * p ;", tok("int * __restrict__ * p;", "test.c"));
@@ -3277,6 +3293,7 @@ private:
         ASSERT_EQUALS("int * p ;", tok("int * restrict p;", "test.c"));
         ASSERT_EQUALS("int * * p ;", tok("int * restrict * p;", "test.c"));
         ASSERT_EQUALS("void foo ( float * a , float * b ) ;", tok("void foo(float * restrict a, float * restrict b);", "test.c"));
+        ASSERT_EQUALS("void foo ( int restrict ) ;", tok("void foo(int restrict);"));
         ASSERT_EQUALS("int * p ;", tok("typedef int * __restrict__ rint; rint p;", "test.c"));
 
         // don't remove struct members:

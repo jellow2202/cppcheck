@@ -34,7 +34,7 @@
 #include <iomanip>
 
 InternalError::InternalError(const Token *tok, const std::string &errorMsg, Type type) :
-    token(tok), errorMessage(errorMsg)
+    token(tok), errorMessage(errorMsg), type(type)
 {
     switch (type) {
     case AST:
@@ -42,6 +42,9 @@ InternalError::InternalError(const Token *tok, const std::string &errorMsg, Type
         break;
     case SYNTAX:
         id = "syntaxError";
+        break;
+    case UNKNOWN_MACRO:
+        id = "unknownMacro";
         break;
     case INTERNAL:
         id = "cppcheckError";
@@ -156,10 +159,10 @@ ErrorLogger::ErrorMessage::ErrorMessage(const tinyxml2::XMLElement * const errms
     _inconclusive = attr && (std::strcmp(attr, "true") == 0);
 
     attr = errmsg->Attribute("msg");
-    _shortMessage = attr ? attr : "";
+    mShortMessage = attr ? attr : "";
 
     attr = errmsg->Attribute("verbose");
-    _verboseMessage = attr ? attr : "";
+    mVerboseMessage = attr ? attr : "";
 
     for (const tinyxml2::XMLElement *e = errmsg->FirstChildElement(); e; e = e->NextSiblingElement()) {
         if (std::strcmp(e->Name(),"location")==0) {
@@ -175,39 +178,29 @@ ErrorLogger::ErrorMessage::ErrorMessage(const tinyxml2::XMLElement * const errms
     }
 }
 
-static std::string replaceStr(std::string s, const std::string &from, const std::string &to)
-{
-    std::string::size_type pos = 0;
-    while (std::string::npos != (pos = s.find(from,pos))) {
-        s = s.substr(0, pos) + to + s.substr(pos + from.size());
-        pos += to.size();
-    }
-    return s;
-}
-
 void ErrorLogger::ErrorMessage::setmsg(const std::string &msg)
 {
     // If a message ends to a '\n' and contains only a one '\n'
-    // it will cause the _verboseMessage to be empty which will show
+    // it will cause the mVerboseMessage to be empty which will show
     // as an empty message to the user if --verbose is used.
     // Even this doesn't cause problems with messages that have multiple
-    // lines, none of the the error messages should end into it.
+    // lines, none of the error messages should end into it.
     assert(!endsWith(msg,'\n'));
 
     // The summary and verbose message are separated by a newline
     // If there is no newline then both the summary and verbose messages
     // are the given message
     const std::string::size_type pos = msg.find('\n');
-    const std::string symbolName = _symbolNames.empty() ? std::string() : _symbolNames.substr(0, _symbolNames.find('\n'));
+    const std::string symbolName = mSymbolNames.empty() ? std::string() : mSymbolNames.substr(0, mSymbolNames.find('\n'));
     if (pos == std::string::npos) {
-        _shortMessage = replaceStr(msg, "$symbol", symbolName);
-        _verboseMessage = replaceStr(msg, "$symbol", symbolName);
+        mShortMessage = replaceStr(msg, "$symbol", symbolName);
+        mVerboseMessage = replaceStr(msg, "$symbol", symbolName);
     } else if (msg.compare(0,8,"$symbol:") == 0) {
-        _symbolNames += msg.substr(8, pos-7);
+        mSymbolNames += msg.substr(8, pos-7);
         setmsg(msg.substr(pos + 1));
     } else {
-        _shortMessage = replaceStr(msg.substr(0, pos), "$symbol", symbolName);
-        _verboseMessage = replaceStr(msg.substr(pos + 1), "$symbol", symbolName);
+        mShortMessage = replaceStr(msg.substr(0, pos), "$symbol", symbolName);
+        mVerboseMessage = replaceStr(msg.substr(pos + 1), "$symbol", symbolName);
     }
 }
 
@@ -220,7 +213,7 @@ Suppressions::ErrorMessage ErrorLogger::ErrorMessage::toSuppressionsErrorMessage
         ret.lineNumber = _callStack.back().line;
     }
     ret.inconclusive = _inconclusive;
-    ret.symbolNames = _symbolNames;
+    ret.symbolNames = mSymbolNames;
     return ret;
 }
 
@@ -237,8 +230,8 @@ std::string ErrorLogger::ErrorMessage::serialize() const
         oss << inconclusive.length() << " " << inconclusive;
     }
 
-    const std::string saneShortMessage = fixInvalidChars(_shortMessage);
-    const std::string saneVerboseMessage = fixInvalidChars(_verboseMessage);
+    const std::string saneShortMessage = fixInvalidChars(mShortMessage);
+    const std::string saneVerboseMessage = fixInvalidChars(mVerboseMessage);
 
     oss << saneShortMessage.length() << " " << saneShortMessage;
     oss << saneVerboseMessage.length() << " " << saneVerboseMessage;
@@ -289,8 +282,8 @@ bool ErrorLogger::ErrorMessage::deserialize(const std::string &data)
     _severity = Severity::fromString(results[1]);
     std::istringstream scwe(results[2]);
     scwe >> _cwe.id;
-    _shortMessage = results[3];
-    _verboseMessage = results[4];
+    mShortMessage = results[3];
+    mVerboseMessage = results[4];
 
     unsigned int stackSize = 0;
     if (!(iss >> stackSize))
@@ -389,8 +382,8 @@ std::string ErrorLogger::ErrorMessage::toXML() const
     printer.OpenElement("error", false);
     printer.PushAttribute("id", _id.c_str());
     printer.PushAttribute("severity", Severity::toString(_severity).c_str());
-    printer.PushAttribute("msg", fixInvalidChars(_shortMessage).c_str());
-    printer.PushAttribute("verbose", fixInvalidChars(_verboseMessage).c_str());
+    printer.PushAttribute("msg", fixInvalidChars(mShortMessage).c_str());
+    printer.PushAttribute("verbose", fixInvalidChars(mVerboseMessage).c_str());
     if (_cwe.id)
         printer.PushAttribute("cwe", _cwe.id);
     if (_inconclusive)
@@ -401,19 +394,19 @@ std::string ErrorLogger::ErrorMessage::toXML() const
         if (!file0.empty() && (*it).getfile() != file0)
             printer.PushAttribute("file0", Path::toNativeSeparators(file0).c_str());
         printer.PushAttribute("file", (*it).getfile().c_str());
-        printer.PushAttribute("line", (*it).line);
+        printer.PushAttribute("line", std::max((*it).line,0));
         if (!it->getinfo().empty())
-            printer.PushAttribute("info", it->getinfo().c_str());
+            printer.PushAttribute("info", fixInvalidChars(it->getinfo()).c_str());
         printer.CloseElement(false);
     }
-    for (std::string::size_type pos = 0; pos < _symbolNames.size();) {
-        const std::string::size_type pos2 = _symbolNames.find('\n', pos);
+    for (std::string::size_type pos = 0; pos < mSymbolNames.size();) {
+        const std::string::size_type pos2 = mSymbolNames.find('\n', pos);
         std::string symbolName;
         if (pos2 == std::string::npos) {
-            symbolName = _symbolNames.substr(pos);
+            symbolName = mSymbolNames.substr(pos);
             pos = pos2;
         } else {
-            symbolName = _symbolNames.substr(pos, pos2-pos);
+            symbolName = mSymbolNames.substr(pos, pos2-pos);
             pos = pos2 + 1;
         }
         printer.OpenElement("symbol", false);
@@ -445,7 +438,7 @@ static std::string readCode(const std::string &file, unsigned int linenr, unsign
     if (endPos + 1 < line.size())
         line.erase(endPos + 1);
     std::string::size_type pos = 0;
-    while ((pos = line.find("\t", pos)) != std::string::npos)
+    while ((pos = line.find('\t', pos)) != std::string::npos)
         line[pos] = ' ';
     return line + endl + std::string((column>0 ? column-1 : column), ' ') + '^';
 }
@@ -465,7 +458,7 @@ std::string ErrorLogger::ErrorMessage::toString(bool verbose, const std::string 
                 text << ", inconclusive";
             text << ") ";
         }
-        text << (verbose ? _verboseMessage : _shortMessage);
+        text << (verbose ? mVerboseMessage : mShortMessage);
         return text.str();
     }
 
@@ -481,20 +474,21 @@ std::string ErrorLogger::ErrorMessage::toString(bool verbose, const std::string 
     findAndReplace(result, "{id}", _id);
     if (result.find("{inconclusive:") != std::string::npos) {
         const std::string::size_type pos1 = result.find("{inconclusive:");
-        const std::string::size_type pos2 = result.find("}", pos1+1);
+        const std::string::size_type pos2 = result.find('}', pos1+1);
         const std::string replaceFrom = result.substr(pos1,pos2-pos1+1);
         const std::string replaceWith = _inconclusive ? result.substr(pos1+14, pos2-pos1-14) : std::string();
         findAndReplace(result, replaceFrom, replaceWith);
     }
     findAndReplace(result, "{severity}", Severity::toString(_severity));
-    findAndReplace(result, "{message}", verbose ? _verboseMessage : _shortMessage);
+    findAndReplace(result, "{cwe}", MathLib::toString(_cwe.id));
+    findAndReplace(result, "{message}", verbose ? mVerboseMessage : mShortMessage);
     findAndReplace(result, "{callstack}", _callStack.empty() ? emptyString : callStackToString(_callStack));
     if (!_callStack.empty()) {
         findAndReplace(result, "{file}", _callStack.back().getfile());
         findAndReplace(result, "{line}", MathLib::toString(_callStack.back().line));
         findAndReplace(result, "{column}", MathLib::toString(_callStack.back().col));
         if (result.find("{code}") != std::string::npos) {
-            const std::string::size_type pos = result.find("\r");
+            const std::string::size_type pos = result.find('\r');
             const char *endl;
             if (pos == std::string::npos)
                 endl = "\n";
@@ -502,7 +496,7 @@ std::string ErrorLogger::ErrorMessage::toString(bool verbose, const std::string 
                 endl = "\r\n";
             else
                 endl = "\r";
-            findAndReplace(result, "{code}", readCode(_callStack.back().getfile(), _callStack.back().line, _callStack.back().col, endl));
+            findAndReplace(result, "{code}", readCode(_callStack.back().getOrigFile(), _callStack.back().line, _callStack.back().col, endl));
         }
     } else {
         findAndReplace(result, "{file}", "nofile");
@@ -523,9 +517,9 @@ std::string ErrorLogger::ErrorMessage::toString(bool verbose, const std::string 
             findAndReplace(text, "{file}", fileLocation.getfile());
             findAndReplace(text, "{line}", MathLib::toString(fileLocation.line));
             findAndReplace(text, "{column}", MathLib::toString(fileLocation.col));
-            findAndReplace(text, "{info}", fileLocation.getinfo().empty() ? _shortMessage : fileLocation.getinfo());
+            findAndReplace(text, "{info}", fileLocation.getinfo().empty() ? mShortMessage : fileLocation.getinfo());
             if (text.find("{code}") != std::string::npos) {
-                const std::string::size_type pos = text.find("\r");
+                const std::string::size_type pos = text.find('\r');
                 const char *endl;
                 if (pos == std::string::npos)
                     endl = "\n";
@@ -533,7 +527,7 @@ std::string ErrorLogger::ErrorMessage::toString(bool verbose, const std::string 
                     endl = "\r\n";
                 else
                     endl = "\r";
-                findAndReplace(text, "{code}", readCode(fileLocation.getfile(), fileLocation.line, fileLocation.col, endl));
+                findAndReplace(text, "{code}", readCode(fileLocation.getOrigFile(), fileLocation.line, fileLocation.col, endl));
             }
             result += '\n' + text;
         }
@@ -542,20 +536,21 @@ std::string ErrorLogger::ErrorMessage::toString(bool verbose, const std::string 
     return result;
 }
 
-void ErrorLogger::reportUnmatchedSuppressions(const std::list<Suppressions::Suppression> &unmatched)
+bool ErrorLogger::reportUnmatchedSuppressions(const std::list<Suppressions::Suppression> &unmatched)
 {
+    bool err = false;
     // Report unmatched suppressions
-    for (std::list<Suppressions::Suppression>::const_iterator i = unmatched.begin(); i != unmatched.end(); ++i) {
+    for (const Suppressions::Suppression &s : unmatched) {
         // don't report "unmatchedSuppression" as unmatched
-        if (i->errorId == "unmatchedSuppression")
+        if (s.errorId == "unmatchedSuppression")
             continue;
 
         // check if this unmatched suppression is suppressed
         bool suppressed = false;
-        for (std::list<Suppressions::Suppression>::const_iterator i2 = unmatched.begin(); i2 != unmatched.end(); ++i2) {
-            if (i2->errorId == "unmatchedSuppression") {
-                if ((i2->fileName == "*" || i2->fileName == i->fileName) &&
-                    (i2->lineNumber == Suppressions::Suppression::NO_LINE || i2->lineNumber == i->lineNumber)) {
+        for (const Suppressions::Suppression &s2 : unmatched) {
+            if (s2.errorId == "unmatchedSuppression") {
+                if ((s2.fileName == "*" || s2.fileName == s.fileName) &&
+                    (s2.lineNumber == Suppressions::Suppression::NO_LINE || s2.lineNumber == s.lineNumber)) {
                     suppressed = true;
                     break;
                 }
@@ -566,10 +561,12 @@ void ErrorLogger::reportUnmatchedSuppressions(const std::list<Suppressions::Supp
             continue;
 
         std::list<ErrorLogger::ErrorMessage::FileLocation> callStack;
-        if (!i->fileName.empty())
-            callStack.emplace_back(i->fileName, i->lineNumber);
-        reportErr(ErrorLogger::ErrorMessage(callStack, emptyString, Severity::information, "Unmatched suppression: " + i->errorId, "unmatchedSuppression", false));
+        if (!s.fileName.empty())
+            callStack.emplace_back(s.fileName, s.lineNumber);
+        reportErr(ErrorLogger::ErrorMessage(callStack, emptyString, Severity::information, "Unmatched suppression: " + s.errorId, "unmatchedSuppression", false));
+        err = true;
     }
+    return err;
 }
 
 std::string ErrorLogger::callStackToString(const std::list<ErrorLogger::ErrorMessage::FileLocation> &callStack)
@@ -583,34 +580,41 @@ std::string ErrorLogger::callStackToString(const std::list<ErrorLogger::ErrorMes
 
 
 ErrorLogger::ErrorMessage::FileLocation::FileLocation(const Token* tok, const TokenList* tokenList)
-    : fileIndex(tok->fileIndex()), line(tok->linenr()), col(tok->col()), _file(tokenList->file(tok))
+    : fileIndex(tok->fileIndex()), line(tok->linenr()), col(tok->col()), mOrigFileName(tokenList->getOrigFile(tok)), mFileName(tokenList->file(tok))
 {
 }
 
 ErrorLogger::ErrorMessage::FileLocation::FileLocation(const Token* tok, const std::string &info, const TokenList* tokenList)
-    : fileIndex(tok->fileIndex()), line(tok->linenr()), col(tok->col()), _file(tokenList->file(tok)), _info(info)
+    : fileIndex(tok->fileIndex()), line(tok->linenr()), col(tok->col()), mOrigFileName(tokenList->getOrigFile(tok)), mFileName(tokenList->file(tok)), mInfo(info)
 {
 }
 
 std::string ErrorLogger::ErrorMessage::FileLocation::getfile(bool convert) const
 {
     if (convert)
-        return Path::toNativeSeparators(_file);
-    return _file;
+        return Path::toNativeSeparators(mFileName);
+    return mFileName;
+}
+
+std::string ErrorLogger::ErrorMessage::FileLocation::getOrigFile(bool convert) const
+{
+    if (convert)
+        return Path::toNativeSeparators(mOrigFileName);
+    return mOrigFileName;
 }
 
 void ErrorLogger::ErrorMessage::FileLocation::setfile(const std::string &file)
 {
-    _file = file;
-    _file = Path::fromNativeSeparators(_file);
-    _file = Path::simplifyPath(_file);
+    mFileName = file;
+    mFileName = Path::fromNativeSeparators(mFileName);
+    mFileName = Path::simplifyPath(mFileName);
 }
 
 std::string ErrorLogger::ErrorMessage::FileLocation::stringify() const
 {
     std::ostringstream oss;
-    oss << '[' << Path::toNativeSeparators(_file);
-    if (line != 0)
+    oss << '[' << Path::toNativeSeparators(mFileName);
+    if (line != Suppressions::Suppression::NO_LINE)
         oss << ':' << line;
     oss << ']';
     return oss.str();
@@ -749,3 +753,27 @@ std::string ErrorLogger::plistData(const ErrorLogger::ErrorMessage &msg)
     return plist.str();
 }
 
+
+std::string replaceStr(std::string s, const std::string &from, const std::string &to)
+{
+    std::string::size_type pos1 = 0;
+    while (pos1 < s.size()) {
+        pos1 = s.find(from, pos1);
+        if (pos1 == std::string::npos)
+            return s;
+        if (pos1 > 0 && (s[pos1-1] == '_' || std::isalnum(s[pos1-1]))) {
+            pos1++;
+            continue;
+        }
+        const std::string::size_type pos2 = pos1 + from.size();
+        if (pos2 >= s.size())
+            return s.substr(0,pos1) + to;
+        if (s[pos2] == '_' || std::isalnum(s[pos2])) {
+            pos1++;
+            continue;
+        }
+        s = s.substr(0,pos1) + to + s.substr(pos2);
+        pos1 += to.size();
+    }
+    return s;
+}

@@ -22,12 +22,29 @@
 #define astutilsH
 //---------------------------------------------------------------------------
 
+#include <functional>
 #include <string>
 #include <vector>
+
+#include "errorlogger.h"
 
 class Library;
 class Settings;
 class Token;
+class Variable;
+
+enum class ChildrenToVisit {
+    none,
+    op1,
+    op2,
+    op1_and_op2,
+    done  // found what we looked for, don't visit any more children
+};
+
+/**
+ * Visit AST nodes recursively. The order is not "well defined"
+ */
+void visitAstNodes(const Token *ast, std::function<ChildrenToVisit(const Token *)> visitor);
 
 /** Is expression a 'signed char' if no promotion is used */
 bool astIsSignedChar(const Token *tok);
@@ -39,6 +56,12 @@ bool astIsIntegral(const Token *tok, bool unknown);
 bool astIsFloat(const Token *tok, bool unknown);
 /** Is expression of boolean type? */
 bool astIsBool(const Token *tok);
+
+bool astIsPointer(const Token *tok);
+
+bool astIsIterator(const Token *tok);
+
+bool astIsContainer(const Token *tok);
 
 /**
  * Get canonical type of expression. const/static/etc are not included and neither *&.
@@ -54,7 +77,11 @@ std::string astCanonicalType(const Token *expr);
 /** Is given syntax tree a variable comparison against value */
 const Token * astIsVariableComparison(const Token *tok, const std::string &comp, const std::string &rhs, const Token **vartok=nullptr);
 
-bool isSameExpression(bool cpp, bool macro, const Token *tok1, const Token *tok2, const Library& library, bool pure);
+const Token * nextAfterAstRightmostLeaf(const Token * tok);
+
+bool precedes(const Token * tok1, const Token * tok2);
+
+bool isSameExpression(bool cpp, bool macro, const Token *tok1, const Token *tok2, const Library& library, bool pure, bool followVar, ErrorPath* errors=nullptr);
 
 bool isEqualKnownValue(const Token * const tok1, const Token * const tok2);
 
@@ -69,11 +96,11 @@ bool isDifferentKnownValues(const Token * const tok1, const Token * const tok2);
  * @param library files data
  * @param pure
  */
-bool isOppositeCond(bool isNot, bool cpp, const Token * const cond1, const Token * const cond2, const Library& library, bool pure);
+bool isOppositeCond(bool isNot, bool cpp, const Token * const cond1, const Token * const cond2, const Library& library, bool pure, bool followVar, ErrorPath* errors=nullptr);
 
-bool isOppositeExpression(bool cpp, const Token * const tok1, const Token * const tok2, const Library& library, bool pure);
+bool isOppositeExpression(bool cpp, const Token * const tok1, const Token * const tok2, const Library& library, bool pure, bool followVar, ErrorPath* errors=nullptr);
 
-bool isConstExpression(const Token *tok, const Library& library, bool pure);
+bool isConstExpression(const Token *tok, const Library& library, bool pure, bool cpp);
 
 bool isWithoutSideEffects(bool cpp, const Token* tok);
 
@@ -106,6 +133,8 @@ bool isVariableChangedByFunctionCall(const Token *tok, const Settings *settings,
 /** Is variable changed in block of code? */
 bool isVariableChanged(const Token *start, const Token *end, const unsigned int varid, bool globalvar, const Settings *settings, bool cpp);
 
+bool isVariableChanged(const Variable * var, const Settings *settings, bool cpp);
+
 /** Determines the number of arguments - if token is a function call or macro
  * @param start token which is supposed to be the function/macro name.
  * \return Number of arguments
@@ -119,7 +148,6 @@ std::vector<const Token *> getArguments(const Token *ftok);
 
 /**
  * find lambda function end token
- * \todo handle explicit return type
  * \param first The [ token
  * \return nullptr or the }
  */
@@ -131,5 +159,70 @@ const Token *findLambdaEndToken(const Token *first);
  *   a & x;
  */
 bool isLikelyStreamRead(bool cpp, const Token *op);
+
+bool isConstVarExpression(const Token *tok);
+
+/**
+ * Forward data flow analysis for checks
+ *  - unused value
+ *  - redundant assignment
+ *  - valueflow analysis
+ */
+class FwdAnalysis {
+public:
+    FwdAnalysis(bool cpp, const Library &library) : mCpp(cpp), mLibrary(library), mWhat(What::Reassign), mValueFlowKnown(true) {}
+
+    bool hasOperand(const Token *tok, const Token *lhs) const;
+
+    /**
+     * Check if "expr" is reassigned. The "expr" can be a tree (x.y[12]).
+     * @param expr Symbolic expression to perform forward analysis for
+     * @param startToken First token in forward analysis
+     * @param endToken Last token in forward analysis
+     * @return Token where expr is reassigned. If it's not reassigned then nullptr is returned.
+     */
+    const Token *reassign(const Token *expr, const Token *startToken, const Token *endToken);
+
+    /**
+     * Check if "expr" is used. The "expr" can be a tree (x.y[12]).
+     * @param expr Symbolic expression to perform forward analysis for
+     * @param startToken First token in forward analysis
+     * @param endToken Last token in forward analysis
+     * @return true if expr is used.
+     */
+    bool unusedValue(const Token *expr, const Token *startToken, const Token *endToken);
+
+    struct KnownAndToken {
+        bool known;
+        const Token *token;
+    };
+
+    std::vector<KnownAndToken> valueFlow(const Token *expr, const Token *startToken, const Token *endToken);
+
+    /** Is there some possible alias for given expression */
+    bool possiblyAliased(const Token *expr, const Token *startToken) const;
+
+    static bool isNullOperand(const Token *expr);
+private:
+    /** Result of forward analysis */
+    struct Result {
+        enum class Type { NONE, READ, WRITE, BREAK, RETURN, BAILOUT } type;
+        explicit Result(Type type) : type(type), token(nullptr) {}
+        Result(Type type, const Token *token) : type(type), token(token) {}
+        const Token *token;
+    };
+
+    struct Result check(const Token *expr, const Token *startToken, const Token *endToken);
+    struct Result checkRecursive(const Token *expr, const Token *startToken, const Token *endToken, const std::set<unsigned int> &exprVarIds, bool local);
+
+    // Is expression a l-value global data?
+    bool isGlobalData(const Token *expr) const;
+
+    const bool mCpp;
+    const Library &mLibrary;
+    enum class What { Reassign, UnusedValue, ValueFlow } mWhat;
+    std::vector<KnownAndToken> mValueFlow;
+    bool mValueFlowKnown;
+};
 
 #endif // astutilsH

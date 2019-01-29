@@ -34,11 +34,14 @@ public:
 private:
     Settings settings;
 
-    void run() override {
+    void run() OVERRIDE {
         settings.addEnabled("warning");
         settings.addEnabled("style");
         settings.addEnabled("performance");
         LOAD_LIB_2(settings.library, "std.cfg");
+
+        TEST_CASE(outOfBounds);
+        TEST_CASE(outOfBoundsIndexExpression);
 
         TEST_CASE(iterator1);
         TEST_CASE(iterator2);
@@ -54,6 +57,15 @@ private:
         TEST_CASE(iterator12);
         TEST_CASE(iterator13);
         TEST_CASE(iterator14); // #8191
+        TEST_CASE(iterator15); // #8341
+        TEST_CASE(iterator16);
+        TEST_CASE(iterator17);
+        TEST_CASE(iterator18);
+        TEST_CASE(iterator19);
+        TEST_CASE(iterator20);
+        TEST_CASE(iterator21);
+        TEST_CASE(iteratorExpression);
+        TEST_CASE(iteratorSameExpression);
 
         TEST_CASE(dereference);
         TEST_CASE(dereference_break);  // #3644 - handle "break"
@@ -140,7 +152,12 @@ private:
         TEST_CASE(dereferenceInvalidIterator2); // #6572
         TEST_CASE(dereference_auto);
 
-        TEST_CASE(readingEmptyStlContainer);
+        TEST_CASE(loopAlgoElementAssign);
+        TEST_CASE(loopAlgoAccumulateAssign);
+        TEST_CASE(loopAlgoContainerInsert);
+        TEST_CASE(loopAlgoIncrement);
+        TEST_CASE(loopAlgoConditional);
+        TEST_CASE(loopAlgoMinMax);
     }
 
     void check(const char code[], const bool inconclusive=false, const Standards::cppstd_t cppstandard=Standards::CPP11) {
@@ -164,6 +181,125 @@ private:
         check(code.c_str(), inconclusive);
     }
 
+    void checkNormal(const char code[]) {
+        // Clear the error buffer..
+        errout.str("");
+
+        // Tokenize..
+        Tokenizer tokenizer(&settings, this);
+        std::istringstream istr(code);
+        tokenizer.tokenize(istr, "test.cpp");
+
+        // Check..
+        CheckStl checkStl(&tokenizer, &settings, this);
+        checkStl.runChecks(&tokenizer, &settings, this);
+    }
+
+    void outOfBounds() {
+        setMultiline();
+
+        checkNormal("void f() {\n"
+                    "  std::string s;\n"
+                    "  s[10] = 1;\n"
+                    "}");
+        ASSERT_EQUALS("test.cpp:3:error:Out of bounds access in s because s is empty.\n", errout.str());
+
+        checkNormal("void f() {\n"
+                    "  std::string s = \"abcd\";\n"
+                    "  s[10] = 1;\n"
+                    "}");
+        ASSERT_EQUALS("test.cpp:3:error:Accessing s[10] is out of bounds when s size is 4.\n", errout.str());
+
+        checkNormal("void f(std::vector<int> v) {\n"
+                    "    v.front();\n"
+                    "    if (v.empty()) {}\n"
+                    "}\n");
+        ASSERT_EQUALS("test.cpp:2:warning:Either the condition 'v.empty()' is redundant or v is accessed out of bounds when v is empty.\n"
+                      "test.cpp:3:note:condition 'v.empty()'\n"
+                      "test.cpp:2:note:Access out of bounds\n", errout.str());
+
+        checkNormal("void f(std::vector<int> v) {\n"
+                    "    if (v.size() == 3) {}\n"
+                    "    v[16] = 0;\n"
+                    "}\n");
+        ASSERT_EQUALS("test.cpp:3:warning:Either the condition 'v.size()==3' is redundant or v size can be 3. Accessing v[16] is out of bounds when v size is 3.\n"
+                      "test.cpp:2:note:condition 'v.size()==3'\n"
+                      "test.cpp:3:note:Access out of bounds\n", errout.str());
+
+        checkNormal("void f(std::vector<int> v) {\n"
+                    "    int i = 16;\n"
+                    "    if (v.size() == 3) {\n"
+                    "        v[i] = 0;\n"
+                    "    }\n"
+                    "}\n");
+        ASSERT_EQUALS("test.cpp:4:warning:Either the condition 'v.size()==3' is redundant or v size can be 3. Accessing v[16] is out of bounds when v size is 3.\n"
+                      "test.cpp:3:note:condition 'v.size()==3'\n"
+                      "test.cpp:4:note:Access out of bounds\n", errout.str());
+
+        checkNormal("void f(std::vector<int> v, int i) {\n"
+                    "    if (v.size() == 3 || i == 16) {}\n"
+                    "    v[i] = 0;\n"
+                    "}\n");
+        ASSERT_EQUALS("", errout.str());
+
+        checkNormal("void f(std::map<int,int> x) {\n"
+                    "    if (x.empty()) { x[1] = 2; }\n"
+                    "}\n");
+        ASSERT_EQUALS("", errout.str());
+
+        checkNormal("void f(std::string s) {\n"
+                    "    if (s.size() == 1) {\n"
+                    "        s[2] = 0;\n"
+                    "    }\n"
+                    "}\n");
+        ASSERT_EQUALS("test.cpp:3:warning:Either the condition 's.size()==1' is redundant or s size can be 1. Accessing s[2] is out of bounds when s size is 1.\n"
+                      "test.cpp:2:note:condition 's.size()==1'\n"
+                      "test.cpp:3:note:Access out of bounds\n", errout.str());
+
+        // Do not crash
+        checkNormal("void a() {\n"
+                    "  std::string b[];\n"
+                    "  for (auto c : b)\n"
+                    "    c.data();\n"
+                    "}\n");
+        ASSERT_EQUALS("", errout.str());
+
+        checkNormal("std::string f(std::string x) {\n"
+                    "  if (x.empty()) return {};\n"
+                    "  x[0];\n"
+                    "}\n");
+        ASSERT_EQUALS("", errout.str());
+
+        checkNormal("std::string f(std::string x) {\n"
+                    "  if (x.empty()) return std::string{};\n"
+                    "  x[0];\n"
+                    "}\n");
+        ASSERT_EQUALS("", errout.str());
+    }
+
+    void outOfBoundsIndexExpression() {
+        setMultiline();
+
+        checkNormal("void f(std::string s) {\n"
+                    "  s[s.size()] = 1;\n"
+                    "}");
+        ASSERT_EQUALS("test.cpp:2:error:Out of bounds access of s, index 's.size()' is out of bounds.\n", errout.str());
+
+        checkNormal("void f(std::string s) {\n"
+                    "  s[s.size()+1] = 1;\n"
+                    "}");
+        ASSERT_EQUALS("test.cpp:2:error:Out of bounds access of s, index 's.size()+1' is out of bounds.\n", errout.str());
+
+        checkNormal("void f(std::string s) {\n"
+                    "  s[1+s.size()] = 1;\n"
+                    "}");
+        ASSERT_EQUALS("test.cpp:2:error:Out of bounds access of s, index '1+s.size()' is out of bounds.\n", errout.str());
+
+        checkNormal("void f(std::string s) {\n"
+                    "  s[x*s.size()] = 1;\n"
+                    "}");
+        ASSERT_EQUALS("test.cpp:2:error:Out of bounds access of s, index 'x*s.size()' is out of bounds.\n", errout.str());
+    }
 
     void iterator1() {
         check("void f()\n"
@@ -173,7 +309,7 @@ private:
               "    for (list<int>::iterator it = l1.begin(); it != l2.end(); ++it)\n"
               "    { }\n"
               "}");
-        ASSERT_EQUALS("[test.cpp:5]: (error) Same iterator is used with different containers 'l1' and 'l2'.\n", errout.str());
+        ASSERT_EQUALS("[test.cpp:5] -> [test.cpp:5]: (error) Same iterator is used with different containers 'l1' and 'l2'.\n", errout.str());
 
         check("void f()\n"
               "{\n"
@@ -182,7 +318,7 @@ private:
               "    for (list<int>::iterator it = l1.begin(); l2.end() != it; ++it)\n"
               "    { }\n"
               "}");
-        ASSERT_EQUALS("[test.cpp:5]: (error) Same iterator is used with different containers 'l1' and 'l2'.\n", errout.str());
+        ASSERT_EQUALS("[test.cpp:5] -> [test.cpp:5]: (error) Same iterator is used with different containers 'l2' and 'l1'.\n", errout.str());
 
         check("struct C { std::list<int> l1; void func(); };\n"
               "void C::func() {\n"
@@ -201,7 +337,7 @@ private:
               "    for (list<int>::const_reverse_iterator it = l1.rbegin(); it != l2.rend(); ++it)\n"
               "    { }\n"
               "}");
-        ASSERT_EQUALS("[test.cpp:5]: (error) Same iterator is used with different containers 'l1' and 'l2'.\n", errout.str());
+        ASSERT_EQUALS("[test.cpp:5] -> [test.cpp:5]: (error) Same iterator is used with different containers 'l1' and 'l2'.\n", errout.str());
     }
 
     void iterator2() {
@@ -215,7 +351,19 @@ private:
               "        ++it;\n"
               "    }\n"
               "}");
-        ASSERT_EQUALS("[test.cpp:6]: (error) Same iterator is used with different containers 'l1' and 'l2'.\n", errout.str());
+        ASSERT_EQUALS("[test.cpp:6] -> [test.cpp:5]: (error) Same iterator is used with different containers 'l1' and 'l2'.\n", errout.str());
+
+        check("void foo()\n"
+              "{\n"
+              "    list<int> l1;\n"
+              "    list<int> l2;\n"
+              "    list<int>::iterator it = l1.begin();\n"
+              "    while (l2.end() != it)\n"
+              "    {\n"
+              "        ++it;\n"
+              "    }\n"
+              "}");
+        ASSERT_EQUALS("[test.cpp:6] -> [test.cpp:5]: (error) Same iterator is used with different containers 'l2' and 'l1'.\n", errout.str());
     }
 
     void iterator3() {
@@ -439,7 +587,7 @@ private:
               "        if (it != s2.end()) continue;\n"
               "    }\n"
               "}");
-        ASSERT_EQUALS("[test.cpp:8]: (error) Same iterator is used with different containers 's1' and 's2'.\n", errout.str());
+        ASSERT_EQUALS("[test.cpp:8] -> [test.cpp:5]: (error) Same iterator is used with different containers 's1' and 's2'.\n", errout.str());
     }
 
     void iterator11() {
@@ -461,7 +609,7 @@ private:
               "    std::map<int, int>::const_iterator it = map1.find(123);\n"
               "    if (it == map2.end()) { }"
               "}");
-        ASSERT_EQUALS("[test.cpp:5]: (error) Same iterator is used with different containers 'map1' and 'map2'.\n", errout.str());
+        ASSERT_EQUALS("[test.cpp:5] -> [test.cpp:4]: (error) Same iterator is used with different containers 'map1' and 'map2'.\n", errout.str());
 
         check("void f() {\n"
               "    std::map<int, int> map1;\n"
@@ -469,7 +617,7 @@ private:
               "    std::map<int, int>::const_iterator it = map1.find(123);\n"
               "    if (map2.end() == it) { }"
               "}");
-        ASSERT_EQUALS("[test.cpp:5]: (error) Same iterator is used with different containers 'map1' and 'map2'.\n", errout.str());
+        ASSERT_EQUALS("[test.cpp:5] -> [test.cpp:4]: (error) Same iterator is used with different containers 'map2' and 'map1'.\n", errout.str());
 
         check("void f(std::string &s) {\n"
               "    int pos = s.find(x);\n"
@@ -491,7 +639,7 @@ private:
               "    while (it!=a.end())\n"
               "        ++it;\n"
               "}");
-        ASSERT_EQUALS("[test.cpp:9]: (error) Same iterator is used with different containers 't' and 'a'.\n", errout.str());
+        ASSERT_EQUALS("[test.cpp:9] -> [test.cpp:8]: (error) Same iterator is used with different containers 't' and 'a'.\n", errout.str());
 
         // #4062
         check("void f() {\n"
@@ -530,6 +678,453 @@ private:
               "    for (it = x.find(0)->second.begin(); it != x.find(0)->second.end(); ++it) {}\n"
               "}");
         ASSERT_EQUALS("", errout.str());
+    }
+
+    void iterator15() {
+        check("void f(C1* x, std::list<int> a) {\n"
+              "  std::list<int>::iterator pos = a.begin();\n"
+              "  for(pos = x[0]->plist.begin(); pos != x[0]->plist.end(); ++pos) {}\n"
+              "}");
+        ASSERT_EQUALS("", errout.str());
+    }
+
+    void iterator16() {
+        check("void foo()\n"
+              "{\n"
+              "    std::list<int> l1;\n"
+              "    std::list<int> l2;\n"
+              "    std::list<int>::iterator it1 = l1.begin();\n"
+              "    std::list<int>::iterator it2 = l2.end();\n"
+              "    while (it1 != it2)\n"
+              "    {\n"
+              "        ++it1;\n"
+              "    }\n"
+              "}");
+        ASSERT_EQUALS("[test.cpp:7] -> [test.cpp:5] -> [test.cpp:6]: (error) Comparison of iterators from containers 'l1' and 'l2'.\n", errout.str());
+
+        check("void foo()\n"
+              "{\n"
+              "    std::list<int> l1;\n"
+              "    std::list<int> l2;\n"
+              "    std::list<int>::iterator it1 = l1.end();\n"
+              "    std::list<int>::iterator it2 = l2.begin();\n"
+              "    while (it2 != it1)\n"
+              "    {\n"
+              "        ++it2;\n"
+              "    }\n"
+              "}");
+        ASSERT_EQUALS("[test.cpp:7] -> [test.cpp:6] -> [test.cpp:5]: (error) Comparison of iterators from containers 'l2' and 'l1'.\n", errout.str());
+
+        check("void foo()\n"
+              "{\n"
+              "    std::list<int> l1;\n"
+              "    std::list<int> l2;\n"
+              "    std::list<int>::iterator it2 = l2.end();\n"
+              "    std::list<int>::iterator it1 = l1.begin();\n"
+              "    while (it1 != it2)\n"
+              "    {\n"
+              "        ++it1;\n"
+              "    }\n"
+              "}");
+        ASSERT_EQUALS("[test.cpp:7] -> [test.cpp:6] -> [test.cpp:5]: (error) Comparison of iterators from containers 'l1' and 'l2'.\n", errout.str());
+
+        check("void foo()\n"
+              "{\n"
+              "    std::list<int> l1;\n"
+              "    std::list<int> l2(10, 4);\n"
+              "    std::list<int>::iterator it1 = l1.begin();\n"
+              "    std::list<int>::iterator it2 = l2.find(4);\n"
+              "    while (it1 != it2)\n"
+              "    {\n"
+              "        ++it1;\n"
+              "    }\n"
+              "}");
+        ASSERT_EQUALS("[test.cpp:7] -> [test.cpp:6] -> [test.cpp:5]: (error) Comparison of iterators from containers 'l1' and 'l2'.\n", errout.str());
+
+    }
+
+    void iterator17() {
+        check("void foo()\n"
+              "{\n"
+              "    std::list<int> l1;\n"
+              "    std::list<int> l2;\n"
+              "    std::list<int>::iterator it1 = l1.begin();\n"
+              "    std::list<int>::iterator it2 = l1.end();\n"
+              "    { it2 = l2.end(); }\n"
+              "    while (it1 != it2)\n"
+              "    {\n"
+              "        ++it1;\n"
+              "    }\n"
+              "}");
+        ASSERT_EQUALS("[test.cpp:8] -> [test.cpp:5] -> [test.cpp:7]: (error) Comparison of iterators from containers 'l1' and 'l2'.\n", errout.str());
+
+        check("void foo()\n"
+              "{\n"
+              "    std::list<int> l1;\n"
+              "    std::list<int> l2;\n"
+              "    std::list<int>::iterator it1 = l1.begin();\n"
+              "    std::list<int>::iterator it2 = l1.end();\n"
+              "    while (it1 != it2)\n"
+              "    {\n"
+              "        ++it1;\n"
+              "    }\n"
+              "    it2 = l2.end();\n"
+              "}");
+        ASSERT_EQUALS("", errout.str());
+
+        check("void foo()\n"
+              "{\n"
+              "    std::list<int> l1;\n"
+              "    std::list<int> l2;\n"
+              "    std::list<int>::iterator it1 = l1.begin();\n"
+              "    std::list<int>::iterator it2 = l1.end();\n"
+              "    it1 = l2.end();\n"
+              "    it1 = l1.end();\n"
+              "    if (it1 != it2)\n"
+              "    {\n"
+              "        ++it1;\n"
+              "    }\n"
+              "}");
+        ASSERT_EQUALS("", errout.str());
+
+        check("void foo()\n"
+              "{\n"
+              "    std::list<int> l1;\n"
+              "    std::list<int> l2;\n"
+              "    std::list<int>::iterator it1 = l1.begin();\n"
+              "    std::list<int>::iterator it2 = l1.end();\n"
+              "    { it2 = l2.end(); }\n"
+              "    it2 = l1.end();\n"
+              "    { it2 = l2.end(); }\n"
+              "    while (it1 != it2)\n"
+              "    {\n"
+              "        ++it1;\n"
+              "    }\n"
+              "}");
+        ASSERT_EQUALS("[test.cpp:10] -> [test.cpp:5] -> [test.cpp:9]: (error) Comparison of iterators from containers 'l1' and 'l2'.\n", errout.str());
+    }
+
+    void iterator18() {
+        check("void foo()\n"
+              "{\n"
+              "    std::list<int> l1;\n"
+              "    std::list<int> l2;\n"
+              "    std::list<int>::iterator it1 = l1.begin();\n"
+              "    std::list<int>::iterator it2 = l1.end();\n"
+              "    while (++it1 != --it2)\n"
+              "    {\n"
+              "    }\n"
+              "}");
+        ASSERT_EQUALS("", errout.str());
+
+        check("void foo()\n"
+              "{\n"
+              "    std::list<int> l1;\n"
+              "    std::list<int> l2;\n"
+              "    std::list<int>::iterator it1 = l1.begin();\n"
+              "    std::list<int>::iterator it2 = l1.end();\n"
+              "    while (it1++ != --it2)\n"
+              "    {\n"
+              "    }\n"
+              "}");
+        ASSERT_EQUALS("", errout.str());
+
+        check("void foo()\n"
+              "{\n"
+              "    std::list<int> l1;\n"
+              "    std::list<int> l2;\n"
+              "    std::list<int>::iterator it1 = l1.begin();\n"
+              "    std::list<int>::iterator it2 = l1.end();\n"
+              "    if (--it2 > it1++)\n"
+              "    {\n"
+              "    }\n"
+              "}");
+        TODO_ASSERT_EQUALS("", "[test.cpp:7]: (error) Dangerous comparison using operator< on iterator.\n", errout.str());
+    }
+
+    void iterator19() {
+        check("void foo()\n"
+              "{\n"
+              "    std::list<int> l1;\n"
+              "    std::list<int>::iterator it1 = l1.begin();\n"
+              "    {\n"
+              "        std::list<int> l1;\n"
+              "        if (it1 != l1.end())\n"
+              "        {\n"
+              "        }\n"
+              "    }\n"
+              "}");
+        ASSERT_EQUALS("[test.cpp:7] -> [test.cpp:4]: (error) Same iterator is used with containers 'l1' that are defined in different scopes.\n", errout.str());
+
+        check("void foo()\n"
+              "{\n"
+              "    std::list<int> l1;\n"
+              "    std::list<int>::iterator it1 = l1.begin();\n"
+              "    {\n"
+              "        std::list<int> l1;\n"
+              "        if (l1.end() > it1)\n"
+              "        {\n"
+              "        }\n"
+              "    }\n"
+              "}");
+        TODO_ASSERT_EQUALS("[test.cpp:7] -> [test.cpp:4]: (error) Same iterator is used with containers 'l1' that are defined in different scopes.\n",
+                           "[test.cpp:7] -> [test.cpp:4]: (error) Same iterator is used with containers 'l1' that are defined in different scopes.\n[test.cpp:7]: (error) Dangerous comparison using operator< on iterator.\n",
+                           errout.str());
+
+        check("void foo()\n"
+              "{\n"
+              "    std::list<int> l1;\n"
+              "    std::list<int>::iterator it1 = l1.begin();\n"
+              "    {\n"
+              "        std::list<int> l1;\n"
+              "        std::list<int>::iterator it2 = l1.begin();\n"
+              "        if (it1 != it2)\n"
+              "        {\n"
+              "        }\n"
+              "    }\n"
+              "}");
+        ASSERT_EQUALS("[test.cpp:8] -> [test.cpp:4] -> [test.cpp:7]: (error) Comparison of iterators from containers 'l1' that are defined in different scopes.\n", errout.str());
+
+        check("void foo()\n"
+              "{\n"
+              "    std::list<int> l1;\n"
+              "    std::list<int>::iterator it1 = l1.begin();\n"
+              "    {\n"
+              "        std::list<int> l1;\n"
+              "        std::list<int>::iterator it2 = l1.begin();\n"
+              "        if (it2 != it1)\n"
+              "        {\n"
+              "        }\n"
+              "    }\n"
+              "}");
+        ASSERT_EQUALS("[test.cpp:8] -> [test.cpp:4] -> [test.cpp:7]: (error) Comparison of iterators from containers 'l1' that are defined in different scopes.\n", errout.str());
+
+    }
+
+    void iterator20() {
+        check("void foo()\n"
+              "{\n"
+              "    std::list<int> l1;\n"
+              "    std::list<int> l2;\n"
+              "    std::list<int>::iterator it1 = l1.begin();\n"
+              "    std::list<int>::iterator it2 = l2.begin();\n"
+              "    it1 = it2;\n"
+              "    while (it1 != l1.end())\n"
+              "    {\n"
+              "        ++it1;\n"
+              "    }\n"
+              "}");
+        TODO_ASSERT_EQUALS("[test.cpp:8] -> [test.cpp:7]: (error) Same iterator is used with different containers 'l2' and 'l1'.\n", "", errout.str());
+
+        check("std::list<int> l3;\n"
+              "std::list<int>::iterator bar()\n"
+              "{\n"
+              "    return l3.end();\n"
+              "}\n"
+              "void foo()\n"
+              "{\n"
+              "    std::list<int> l1;\n"
+              "    std::list<int> l2;\n"
+              "    std::list<int>::iterator it1 = l1.begin();\n"
+              "    std::list<int>::iterator it2 = l2.begin();\n"
+              "    it1 = bar();\n"
+              "    while (it1 != it2)\n"
+              "    {\n"
+              "        ++it1;\n"
+              "    }\n"
+              "}");
+        TODO_ASSERT_EQUALS("[test.cpp:13] -> [test.cpp:10] -> [test.cpp:11]: (error) Comparison of iterators from containers 'l1' and 'l2'.\n", "", errout.str());
+
+    }
+
+    void iterator21() {
+        check("void foo()\n"
+              "{\n"
+              "    std::list<int> l1;\n"
+              "    std::list<int> l2;\n"
+              "    std::list<int>::iterator it1 = l1.end();\n"
+              "    std::list<int>::iterator it2 = l2.begin();\n"
+              "    if (it1 != it2)\n"
+              "    {\n"
+              "    }\n"
+              "    if (it2 != it1)\n"
+              "    {\n"
+              "    }\n"
+              "}");
+        ASSERT_EQUALS("[test.cpp:7] -> [test.cpp:6] -> [test.cpp:5]: (error) Comparison of iterators from containers 'l1' and 'l2'.\n"
+                      "[test.cpp:10] -> [test.cpp:6] -> [test.cpp:5]: (error) Comparison of iterators from containers 'l2' and 'l1'.\n", errout.str());
+
+        check("void foo()\n"
+              "{\n"
+              "    std::list<int> l1;\n"
+              "    std::list<int> l2;\n"
+              "    std::list<int>::iterator it1 = l1.end();\n"
+              "    std::list<int>::iterator it2 = l2.begin();\n"
+              "    if (it1 != it2 && it1 != it2)\n"
+              "    {\n"
+              "    }\n"
+              "}");
+        ASSERT_EQUALS("[test.cpp:7] -> [test.cpp:6] -> [test.cpp:5]: (error) Comparison of iterators from containers 'l1' and 'l2'.\n", errout.str());
+
+    }
+
+    void iteratorExpression() {
+        check("std::vector<int>& f();\n"
+              "std::vector<int>& g();\n"
+              "void foo() {\n"
+              "    (void)std::find(f().begin(), g().end(), 0);\n"
+              "}\n");
+        ASSERT_EQUALS("[test.cpp:4]: (warning) Iterators to containers from different expressions 'f()' and 'g()' are used together.\n", errout.str());
+
+        check("std::vector<int>& f();\n"
+              "std::vector<int>& g();\n"
+              "void foo() {\n"
+              "    if(f().begin() == g().end()) {}\n"
+              "}\n");
+        ASSERT_EQUALS("[test.cpp:4]: (warning) Iterators to containers from different expressions 'f()' and 'g()' are used together.\n", errout.str());
+
+        check("std::vector<int>& f();\n"
+              "std::vector<int>& g();\n"
+              "void foo() {\n"
+              "    auto size = f().end() - g().begin();\n"
+              "}\n");
+        ASSERT_EQUALS("[test.cpp:4]: (warning) Iterators to containers from different expressions 'f()' and 'g()' are used together.\n", errout.str());
+
+        check("struct A {\n"
+              "    std::vector<int>& f();\n"
+              "    std::vector<int>& g();\n"
+              "};\n"
+              "void foo() {\n"
+              "    (void)std::find(A().f().begin(), A().g().end(), 0);\n"
+              "}\n");
+        ASSERT_EQUALS("[test.cpp:6]: (warning) Iterators to containers from different expressions 'A().f()' and 'A().g()' are used together.\n", errout.str());
+
+        check("struct A {\n"
+              "    std::vector<int>& f();\n"
+              "    std::vector<int>& g();\n"
+              "};\n"
+              "void foo() {\n"
+              "    (void)std::find(A{} .f().begin(), A{} .g().end(), 0);\n"
+              "}\n");
+        ASSERT_EQUALS("[test.cpp:6]: (warning) Iterators to containers from different expressions 'A{}.f()' and 'A{}.g()' are used together.\n", errout.str());
+
+        check("std::vector<int>& f();\n"
+              "std::vector<int>& g();\n"
+              "void foo() {\n"
+              "    (void)std::find(begin(f()), end(g()), 0);\n"
+              "}\n");
+        ASSERT_EQUALS("[test.cpp:4]: (warning) Iterators to containers from different expressions 'f()' and 'g()' are used together.\n", errout.str());
+
+        check("struct A {\n"
+              "    std::vector<int>& f();\n"
+              "    std::vector<int>& g();\n"
+              "};\n"
+              "void foo() {\n"
+              "    (void)std::find(A().f().begin(), A().f().end(), 0);\n"
+              "}\n");
+        ASSERT_EQUALS("", errout.str());
+
+        check("std::vector<int>& f();\n"
+              "std::vector<int>& g();\n"
+              "void foo() {\n"
+              "    if(bar(f().begin()) == g().end()) {}\n"
+              "}\n");
+        ASSERT_EQUALS("", errout.str());
+
+        check("std::vector<int>& f();\n"
+              "std::vector<int>& g();\n"
+              "void foo() {\n"
+              "    auto it = f().end();\n"
+              "    f().begin() - it\n"
+              "    f().begin()+1 - it\n"
+              "    f().begin() - (it + 1)\n"
+              "    f().begin() - f().end()\n"
+              "    f().begin()+1 - f().end()\n"
+              "    f().begin() - (f().end() + 1)\n"
+              "    (void)std::find(f().begin(), it, 0);\n"
+              "    (void)std::find(f().begin(), it + 1, 0);\n"
+              "    (void)std::find(f().begin() + 1, it + 1, 0);\n"
+              "    (void)std::find(f().begin() + 1, it, 0);\n"
+              "    (void)std::find(f().begin(), f().end(), 0);\n"
+              "    (void)std::find(f().begin() + 1, f().end(), 0);\n"
+              "    (void)std::find(f().begin(), f().end() - 1, 0);\n"
+              "    (void)std::find(f().begin() + 1, f().end() - 1, 0);\n"
+              "    (void)std::find(begin(f()), end(f()));\n"
+              "    (void)std::find(begin(f()) + 1, end(f()), 0);\n"
+              "    (void)std::find(begin(f()), end(f()) - 1, 0);\n"
+              "    (void)std::find(begin(f()) + 1, end(f()) - 1, 0);\n"
+              "}\n");
+        ASSERT_EQUALS("", errout.str());
+
+        check("std::vector<int>& f();\n"
+              "std::vector<int>& g();\n"
+              "void foo() {\n"
+              "    if(f().begin() == f().end()) {}\n"
+              "    if(f().begin() == f().end()+1) {}\n"
+              "    if(f().begin()+1 == f().end()) {}\n"
+              "    if(f().begin()+1 == f().end()+1) {}\n"
+              "}\n");
+        ASSERT_EQUALS("", errout.str());
+
+        check("template<int N>\n"
+              "std::vector<int>& f();\n"
+              "void foo() {\n"
+              "    if(f<1>().begin() == f<1>().end()) {}\n"
+              "}\n");
+        ASSERT_EQUALS("", errout.str());
+
+        check("void f() {\n"
+              "  if (a.begin().x == b.begin().x) {}\n"
+              "  if (begin(a).x == begin(b).x) {}\n"
+              "}\n");
+        ASSERT_EQUALS("", errout.str());
+
+        check("void f() {\n"
+              "  std::list<int*> a;\n"
+              "  std::list<int*> b;\n"
+              "  if (*a.begin() == *b.begin()) {}\n"
+              "}\n");
+        ASSERT_EQUALS("", errout.str());
+
+        check("void foo() {\n"
+              "    if(f().begin(1) == f().end()) {}\n"
+              "}\n");
+        ASSERT_EQUALS("", errout.str());
+    }
+
+    void iteratorSameExpression() {
+        check("void f(std::vector<int> v) {\n"
+              "    std::for_each(v.begin(), v.begin(), [](int){});\n"
+              "}\n");
+        ASSERT_EQUALS("[test.cpp:2]: (style) Same iterators expression are used for algorithm.\n", errout.str());
+
+        check("std::vector<int>& g();\n"
+              "void f() {\n"
+              "    std::for_each(g().begin(), g().begin(), [](int){});\n"
+              "}\n");
+        ASSERT_EQUALS("[test.cpp:3]: (style) Same iterators expression are used for algorithm.\n", errout.str());
+
+        check("void f(std::vector<int> v) {\n"
+              "    std::for_each(v.end(), v.end(), [](int){});\n"
+              "}\n");
+        ASSERT_EQUALS("[test.cpp:2]: (style) Same iterators expression are used for algorithm.\n", errout.str());
+
+        check("std::vector<int>& g();\n"
+              "void f() {\n"
+              "    std::for_each(g().end(), g().end(), [](int){});\n"
+              "}\n");
+        ASSERT_EQUALS("[test.cpp:3]: (style) Same iterators expression are used for algorithm.\n", errout.str());
+
+        check("std::vector<int>::iterator g();\n"
+              "void f(std::vector<int> v) {\n"
+              "    std::for_each(g(), g(), [](int){});\n"
+              "}\n");
+        ASSERT_EQUALS("[test.cpp:3]: (style) Same iterators expression are used for algorithm.\n", errout.str());
+
+        check("void f(std::vector<int>::iterator it) {\n"
+              "    std::for_each(it, it, [](int){});\n"
+              "}\n");
+        ASSERT_EQUALS("[test.cpp:2]: (style) Same iterators expression are used for algorithm.\n", errout.str());
     }
 
     // Dereferencing invalid pointer
@@ -1597,7 +2192,7 @@ private:
               "int foo() {\n"
               "    iterator i;\n"
               "    return i.foo();;\n"
-              "}");
+              "}", true);
         ASSERT_EQUALS("", errout.str());
 
         check("class iterator {\n"
@@ -1608,7 +2203,7 @@ private:
               "int foo() {\n"
               "    iterator i;\n"
               "    return i.foo();;\n"
-              "}");
+              "}", true);
         ASSERT_EQUALS("[test.cpp:8]: (error, inconclusive) Invalid iterator 'i' used.\n", errout.str());
     }
 
@@ -1619,7 +2214,7 @@ private:
               "        {\n"
               "        }\n"
               "    }\n"
-              "}");
+              "}", true);
         ASSERT_EQUALS("", errout.str());
     }
 
@@ -2766,6 +3361,12 @@ private:
               "    return x ? true : (y.empty());\n"
               "}");
         ASSERT_EQUALS("", errout.str());
+
+        // #8360
+        check("void f(std::string s) {\n"
+              "    for (;s.empty();) {}\n"
+              "}");
+        ASSERT_EQUALS("", errout.str());
     }
 
     void stabilityOfChecks() {
@@ -2926,228 +3527,510 @@ private:
               "    iterator it; \n"
               "    it->m_place = 0;\n"
               "    return it; \n"
-              "}\n");
+              "}\n", true);
         ASSERT_EQUALS("[test.cpp:18]: (error, inconclusive) Invalid iterator 'it' used.\n", errout.str());
     }
 
-    void readingEmptyStlContainer() {
-        check("void f() {\n"
-              "    std::map<int, std::string> CMap;\n"
-              "    std::string strValue = CMap[1]; \n"
-              "    std::cout << strValue << CMap.size() << std::endl;\n"
-              "}\n",true);
-        ASSERT_EQUALS("[test.cpp:3]: (style, inconclusive) Reading from empty STL container 'CMap'\n", errout.str());
-
-        check("void f() {\n"
-              "    std::map<int,std::string> CMap;\n"
-              "    std::string strValue = CMap[1];"
-              "}\n",true);
-        ASSERT_EQUALS("[test.cpp:3]: (style, inconclusive) Reading from empty STL container 'CMap'\n", errout.str());
-
-        check("void f() {\n"
-              "    std::map<int,std::string> CMap;\n"
-              "    CMap[1] = \"123\";\n"
-              "    std::string strValue = CMap[1];"
-              "}\n",true);
-        ASSERT_EQUALS("", errout.str());
-
-        check("std::vector<std::string> f() {\n"
-              "    try {\n"
-              "        std::vector<std::string> Vector;\n"
-              "        std::vector<std::string> v2 = Vector;\n"
-              "        std::string strValue = v2[1]; \n" // Do not complain here - this is a consecutive fault of the line above.
-              "    }\n"
-              "    return Vector;\n"
-              "}\n",true);
-        ASSERT_EQUALS("[test.cpp:4]: (style, inconclusive) Reading from empty STL container 'Vector'\n", errout.str());
-
-        check("Vector f() {\n"
-              "    try {\n"
-              "        std::vector<std::string> Vector;\n"
-              "        Vector.push_back(\"123\");\n"
-              "        std::vector<std::string> v2 = Vector;\n"
-              "        std::string strValue = v2[0]; \n"
-              "    }\n"
-              "    return Vector;\n"
-              "}\n", true);
-        ASSERT_EQUALS("", errout.str());
-
-        check("void f() {\n"
-              "    std::map<std::string,std::string> mymap;\n"
-              "    mymap[\"Bakery\"] = \"Barbara\";\n"
-              "    std:string bakery_name = mymap[\"Bakery\"];\n"
-              "}\n", true);
-        ASSERT_EQUALS("", errout.str());
-
-        check("void f() {\n"
-              "    std::vector<int> v;\n"
-              "    v.insert(1);\n"
-              "    int i = v[0];\n"
-              "}\n", true);
-        ASSERT_EQUALS("", errout.str());
-
-        check("void f() {\n"
-              "    std::vector<int> v;\n"
-              "    initialize(v);\n"
-              "    int i = v[0];\n"
-              "}", true);
-        ASSERT_EQUALS("", errout.str());
-
-        check("char f() {\n"
-              "    std::string s(foo);\n"
-              "    return s[0];\n"
-              "}", true);
-        ASSERT_EQUALS("", errout.str());
-
-        check("void f() {\n"
-              "    std::vector<int> v = foo();\n"
-              "    if(bar) v.clear();\n"
-              "    int i = v.find(foobar);\n"
-              "}", true);
-        ASSERT_EQUALS("", errout.str());
-
-        check("void f(std::set<int> v) {\n"
-              "    v.clear();\n"
-              "    int i = v.find(foobar);\n"
-              "}", true);
-        ASSERT_EQUALS("[test.cpp:3]: (style, inconclusive) Reading from empty STL container 'v'\n", errout.str());
-
-        check("void f(std::set<int> v) {\n"
-              "    v.clear();\n"
-              "    v.begin();\n"
-              "}", true);
-        ASSERT_EQUALS("[test.cpp:3]: (style, inconclusive) Reading from empty STL container 'v'\n", errout.str());
-
-        check("void f(std::set<int> v) {\n"
-              "    v.clear();\n"
-              "    *v.begin();\n"
-              "}", true);
-        ASSERT_EQUALS("[test.cpp:3]: (style, inconclusive) Reading from empty STL container 'v'\n", errout.str());
-
-        check("void f(std::set<int> v) {\n"
-              "    v.clear();\n"
-              "    for(auto i = v.cbegin();\n"
-              "        i != v.cend(); ++i) {}\n"
-              "}", true);
-        ASSERT_EQUALS("[test.cpp:4]: (style, inconclusive) Reading from empty STL container 'v'\n", errout.str());
-
-        check("void f(std::set<int> v) {\n"
-              "    v.clear();\n"
-              "    foo(v.begin());\n"
-              "}", true);
-        ASSERT_EQUALS("", errout.str());
-
-        check("void f() {\n"
-              "    std::map<int, std::string> CMap;\n"
-              "    std::string strValue = CMap[1];\n"
-              "    std::string strValue2 = CMap[1];\n"
-              "}\n", true);
-        ASSERT_EQUALS("[test.cpp:3]: (style, inconclusive) Reading from empty STL container 'CMap'\n", errout.str());
-
-        // #4306
-        check("void f(std::vector<int> v) {\n"
-              "    v.clear();\n"
-              "    for(int i = 0; i < v.size(); i++) { cout << v[i]; }\n"
-              "}", true);
-        ASSERT_EQUALS("[test.cpp:3]: (style, inconclusive) Reading from empty STL container 'v'\n", errout.str());
-
-        // #7449 - nonlocal vector
-        check("std::vector<int> v;\n"
-              "void f() {\n"
-              "  v.clear();\n"
-              "  dostuff()\n"
-              "  if (v.empty()) { }\n"
-              "}", true);
-        ASSERT_EQUALS("", errout.str());
-
-        check("std::vector<int> v;\n"
-              "void f() {\n"
-              "  v.clear();\n"
-              "  if (v.empty()) { }\n"
-              "}", true);
-        ASSERT_EQUALS("[test.cpp:4]: (style, inconclusive) Reading from empty STL container 'v'\n", errout.str());
-
-        // #6663
+    void loopAlgoElementAssign() {
         check("void foo() {\n"
-              "    std::set<int> container;\n"
-              "    while (container.size() < 5)\n"
-              "        container.insert(22);\n"
-              "}", true);
+              "    for(int& x:v)\n"
+              "        x = 1;\n"
+              "}\n",
+              true);
+        ASSERT_EQUALS("[test.cpp:3]: (style) Consider using std::fill algorithm instead of a raw loop.\n", errout.str());
+
+        check("void foo() {\n"
+              "    for(int& x:v)\n"
+              "        x = x + 1;\n"
+              "}\n",
+              true);
+        ASSERT_EQUALS("[test.cpp:3]: (style) Consider using std::transform algorithm instead of a raw loop.\n", errout.str());
+
+        check("void foo(int a, int b) {\n"
+              "    for(int& x:v)\n"
+              "        x = a + b;\n"
+              "}\n",
+              true);
+        ASSERT_EQUALS("[test.cpp:3]: (style) Consider using std::fill or std::generate algorithm instead of a raw loop.\n", errout.str());
+
+        check("void foo() {\n"
+              "    for(int& x:v)\n"
+              "        x += 1;\n"
+              "}\n",
+              true);
+        ASSERT_EQUALS("[test.cpp:3]: (style) Consider using std::transform algorithm instead of a raw loop.\n", errout.str());
+
+        check("void foo() {\n"
+              "    for(int& x:v)\n"
+              "        x = f();\n"
+              "}\n",
+              true);
+        ASSERT_EQUALS("[test.cpp:3]: (style) Consider using std::generate algorithm instead of a raw loop.\n", errout.str());
+
+        check("void foo() {\n"
+              "    for(int& x:v) {\n"
+              "        f();\n"
+              "        x = 1;\n"
+              "    }\n"
+              "}\n",
+              true);
         ASSERT_EQUALS("", errout.str());
 
-        // #6679
-        check("class C {\n"
-              "    C() {\n"
-              "        switch (ret) {\n"
-              "            case 1:\n"
-              "                vec.clear();\n"
-              "                break;\n"
-              "            case 2:\n"
-              "                if (vec.empty())\n"
-              "                    ;\n"
-              "                break;\n"
+        check("void foo() {\n"
+              "    for(int& x:v) {\n"
+              "        x = 1;\n"
+              "        f();\n"
+              "    }\n"
+              "}\n",
+              true);
+        ASSERT_EQUALS("", errout.str());
+
+        // There should probably be a message for unconditional break
+        check("void foo() {\n"
+              "    for(int& x:v) {\n"
+              "        x = 1;\n"
+              "        break;\n"
+              "    }\n"
+              "}\n",
+              true);
+        ASSERT_EQUALS("", errout.str());
+
+        check("void foo() {\n"
+              "    for(int& x:v)\n"
+              "        x = ++x;\n"
+              "}\n",
+              true);
+        ASSERT_EQUALS("", errout.str());
+    }
+
+    void loopAlgoAccumulateAssign() {
+        check("void foo() {\n"
+              "    int n = 0;\n"
+              "    for(int x:v)\n"
+              "        n += x;\n"
+              "}\n",
+              true);
+        ASSERT_EQUALS("[test.cpp:4]: (style) Consider using std::accumulate algorithm instead of a raw loop.\n", errout.str());
+
+        check("void foo() {\n"
+              "    int n = 0;\n"
+              "    for(int x:v)\n"
+              "        n = n + x;\n"
+              "}\n",
+              true);
+        ASSERT_EQUALS("[test.cpp:4]: (style) Consider using std::accumulate algorithm instead of a raw loop.\n", errout.str());
+
+        check("void foo() {\n"
+              "    int n = 0;\n"
+              "    for(int x:v)\n"
+              "        n += 1;\n"
+              "}\n",
+              true);
+        ASSERT_EQUALS("[test.cpp:4]: (style) Consider using std::distance algorithm instead of a raw loop.\n", errout.str());
+
+        check("void foo() {\n"
+              "    int n = 0;\n"
+              "    for(int x:v)\n"
+              "        n = n + 1;\n"
+              "}\n",
+              true);
+        ASSERT_EQUALS("[test.cpp:4]: (style) Consider using std::distance algorithm instead of a raw loop.\n", errout.str());
+
+        check("bool f(int);\n"
+              "void foo() {\n"
+              "    bool b = false;\n"
+              "    for(int x:v)\n"
+              "        b &= f(x);\n"
+              "}\n",
+              true);
+        ASSERT_EQUALS("[test.cpp:5]: (style) Consider using std::any_of, std::all_of, std::none_of, or std::accumulate algorithm instead of a raw loop.\n", errout.str());
+
+        check("bool f(int);\n"
+              "void foo() {\n"
+              "    bool b = false;\n"
+              "    for(int x:v)\n"
+              "        b |= f(x);\n"
+              "}\n",
+              true);
+        ASSERT_EQUALS("[test.cpp:5]: (style) Consider using std::any_of, std::all_of, std::none_of, or std::accumulate algorithm instead of a raw loop.\n", errout.str());
+
+        check("bool f(int);\n"
+              "void foo() {\n"
+              "    bool b = false;\n"
+              "    for(int x:v)\n"
+              "        b = b && f(x);\n"
+              "}\n",
+              true);
+        ASSERT_EQUALS("[test.cpp:5]: (style) Consider using std::any_of, std::all_of, std::none_of, or std::accumulate algorithm instead of a raw loop.\n", errout.str());
+
+        check("bool f(int);\n"
+              "void foo() {\n"
+              "    bool b = false;\n"
+              "    for(int x:v)\n"
+              "        b = b || f(x);\n"
+              "}\n",
+              true);
+        ASSERT_EQUALS("[test.cpp:5]: (style) Consider using std::any_of, std::all_of, std::none_of, or std::accumulate algorithm instead of a raw loop.\n", errout.str());
+
+        check("void foo() {\n"
+              "    int n = 0;\n"
+              "    for(int& x:v)\n"
+              "        n = ++x;\n"
+              "}\n",
+              true);
+        ASSERT_EQUALS("", errout.str());
+    }
+
+    void loopAlgoContainerInsert() {
+        check("void foo() {\n"
+              "    std::vector<int> c;\n"
+              "    for(int x:v)\n"
+              "        c.push_back(x);\n"
+              "}\n",
+              true);
+        ASSERT_EQUALS("[test.cpp:4]: (style) Consider using std::copy algorithm instead of a raw loop.\n", errout.str());
+
+        check("void foo() {\n"
+              "    std::vector<int> c;\n"
+              "    for(int x:v)\n"
+              "        c.push_back(f(x));\n"
+              "}\n",
+              true);
+        ASSERT_EQUALS("[test.cpp:4]: (style) Consider using std::transform algorithm instead of a raw loop.\n", errout.str());
+
+        check("void foo() {\n"
+              "    std::vector<int> c;\n"
+              "    for(int x:v)\n"
+              "        c.push_back(x + 1);\n"
+              "}\n",
+              true);
+        ASSERT_EQUALS("[test.cpp:4]: (style) Consider using std::transform algorithm instead of a raw loop.\n", errout.str());
+
+        check("void foo() {\n"
+              "    std::vector<int> c;\n"
+              "    for(int x:v)\n"
+              "        c.push_front(x);\n"
+              "}\n",
+              true);
+        ASSERT_EQUALS("[test.cpp:4]: (style) Consider using std::copy algorithm instead of a raw loop.\n", errout.str());
+
+        check("void foo() {\n"
+              "    std::vector<int> c;\n"
+              "    for(int x:v)\n"
+              "        c.push_front(f(x));\n"
+              "}\n",
+              true);
+        ASSERT_EQUALS("[test.cpp:4]: (style) Consider using std::transform algorithm instead of a raw loop.\n", errout.str());
+
+        check("void foo() {\n"
+              "    std::vector<int> c;\n"
+              "    for(int x:v)\n"
+              "        c.push_front(x + 1);\n"
+              "}\n",
+              true);
+        ASSERT_EQUALS("[test.cpp:4]: (style) Consider using std::transform algorithm instead of a raw loop.\n", errout.str());
+
+        check("void foo() {\n"
+              "    std::vector<int> c;\n"
+              "    for(int x:v)\n"
+              "        c.push_back(v);\n"
+              "}\n",
+              true);
+        ASSERT_EQUALS("", errout.str());
+
+        check("void foo() {\n"
+              "    std::vector<int> c;\n"
+              "    for(int x:v)\n"
+              "        c.push_back(0);\n"
+              "}\n",
+              true);
+        ASSERT_EQUALS("", errout.str());
+    }
+
+    void loopAlgoIncrement() {
+        check("void foo() {\n"
+              "    int n = 0;\n"
+              "    for(int x:v)\n"
+              "        n++;\n"
+              "}\n",
+              true);
+        ASSERT_EQUALS("[test.cpp:4]: (style) Consider using std::distance algorithm instead of a raw loop.\n", errout.str());
+
+        check("void foo() {\n"
+              "    int n = 0;\n"
+              "    for(int x:v)\n"
+              "        ++n;\n"
+              "}\n",
+              true);
+        ASSERT_EQUALS("[test.cpp:4]: (style) Consider using std::distance algorithm instead of a raw loop.\n", errout.str());
+
+        check("void foo() {\n"
+              "    for(int& x:v)\n"
+              "        x++;\n"
+              "}\n",
+              true);
+        ASSERT_EQUALS("[test.cpp:3]: (style) Consider using std::transform algorithm instead of a raw loop.\n", errout.str());
+
+        check("void foo() {\n"
+              "    for(int& x:v)\n"
+              "        ++x;\n"
+              "}\n",
+              true);
+        ASSERT_EQUALS("[test.cpp:3]: (style) Consider using std::transform algorithm instead of a raw loop.\n", errout.str());
+    }
+
+    void loopAlgoConditional() {
+        check("bool pred(int x);\n"
+              "void foo() {\n"
+              "    for(int& x:v) {\n"
+              "        if (pred(x)) {\n"
+              "            x = 1; \n"
               "        }\n"
               "    }\n"
-              "    std::vector<int> vec;\n"
-              "};", true);
-        ASSERT_EQUALS("", errout.str());
+              "}\n",
+              true);
+        ASSERT_EQUALS("[test.cpp:5]: (style) Consider using std::replace_if algorithm instead of a raw loop.\n", errout.str());
 
-        check("class C {\n"
-              "    C() {\n"
-              "        switch (ret) {\n"
-              "            case 1:\n"
-              "                vec.clear();\n"
-              "            case 2:\n"
-              "                if (vec.empty())\n"
-              "                    ;\n"
-              "                break;\n"
+        check("bool pred(int x);\n"
+              "void foo() {\n"
+              "    int n = 0;\n"
+              "    for(int x:v) {\n"
+              "        if (pred(x)) {\n"
+              "            n += x; \n"
               "        }\n"
               "    }\n"
-              "    std::vector<int> vec;\n"
-              "};", true);
-        ASSERT_EQUALS("", errout.str());
+              "}\n",
+              true);
+        ASSERT_EQUALS("[test.cpp:6]: (style) Consider using std::accumulate algorithm instead of a raw loop.\n", errout.str());
 
-        check("class C {\n"
-              "    C() {\n"
-              "        switch (ret) {\n"
-              "            case 1:\n"
-              "                vec.clear();\n"
-              "                if (vec.empty())\n"
-              "                    ;\n"
-              "                break;\n"
+        check("bool pred(int x);\n"
+              "void foo() {\n"
+              "    int n = 0;\n"
+              "    for(int x:v) {\n"
+              "        if (pred(x)) {\n"
+              "            n += 1; \n"
               "        }\n"
               "    }\n"
-              "    std::vector<int> vec;\n"
-              "};", true);
-        ASSERT_EQUALS("[test.cpp:6]: (style, inconclusive) Reading from empty STL container 'vec'\n", errout.str());
+              "}\n",
+              true);
+        ASSERT_EQUALS("[test.cpp:6]: (style) Consider using std::count_if algorithm instead of a raw loop.\n", errout.str());
 
-        // #7560
-        check("std::vector<int> test;\n"
-              "std::vector<int>::iterator it;\n"
-              "void Reset() {\n"
-              "    test.clear();\n"
-              "    it = test.end();\n"
-              "}");
-        ASSERT_EQUALS("", errout.str());
-
-        // #8055
-        check("int main() {\n"
-              "    std::string str;\n"
-              "    auto l = [&]() {\n"
-              "        if (str[0] == 'A')\n"
-              "            std::cout << \"!\";\n"
+        check("bool pred(int x);\n"
+              "void foo() {\n"
+              "    int n = 0;\n"
+              "    for(int x:v) {\n"
+              "        if (pred(x)) {\n"
+              "            n++; \n"
+              "        }\n"
               "    }\n"
-              "    str = \"A\";\n"
-              "    l();\n"
-              "}");
+              "}\n",
+              true);
+        ASSERT_EQUALS("[test.cpp:6]: (style) Consider using std::count_if algorithm instead of a raw loop.\n", errout.str());
+
+        check("bool pred(int x);\n"
+              "void foo() {\n"
+              "    for(int& x:v) {\n"
+              "        if (pred(x)) {\n"
+              "            x = x + 1; \n"
+              "        }\n"
+              "    }\n"
+              "}\n",
+              true);
+        ASSERT_EQUALS("[test.cpp:5]: (style) Consider using std::transform algorithm instead of a raw loop.\n", errout.str());
+
+        check("bool pred(int x);\n"
+              "void foo() {\n"
+              "    std::vector<int> c;\n"
+              "    for(int x:v) {\n"
+              "        if (pred(x)) {\n"
+              "            c.push_back(x); \n"
+              "        }\n"
+              "    }\n"
+              "}\n",
+              true);
+        ASSERT_EQUALS("[test.cpp:6]: (style) Consider using std::copy_if algorithm instead of a raw loop.\n", errout.str());
+
+        check("bool pred(int x);\n"
+              "bool foo() {\n"
+              "    for(int x:v) {\n"
+              "        if (pred(x)) {\n"
+              "            return false; \n"
+              "        }\n"
+              "    }\n"
+              "    return true;\n"
+              "}\n",
+              true);
+        ASSERT_EQUALS("[test.cpp:4]: (style) Consider using std::any_of algorithm instead of a raw loop.\n", errout.str());
+
+        check("bool pred(int x);\n"
+              "bool foo() {\n"
+              "    for(int x:v) {\n"
+              "        if (pred(x)) {\n"
+              "            break; \n"
+              "        }\n"
+              "    }\n"
+              "    return true;\n"
+              "}\n",
+              true);
+        ASSERT_EQUALS("[test.cpp:4]: (style) Consider using std::any_of algorithm instead of a raw loop.\n", errout.str());
+
+        check("bool pred(int x);\n"
+              "void f();\n"
+              "void foo() {\n"
+              "    for(int x:v) {\n"
+              "        if (pred(x)) {\n"
+              "            f(); \n"
+              "            break; \n"
+              "        }\n"
+              "    }\n"
+              "}\n",
+              true);
+        ASSERT_EQUALS("[test.cpp:5]: (style) Consider using std::any_of algorithm instead of a raw loop.\n", errout.str());
+
+        check("bool pred(int x);\n"
+              "void f(int x);\n"
+              "void foo() {\n"
+              "    for(int x:v) {\n"
+              "        if (pred(x)) {\n"
+              "            f(x); \n"
+              "            break; \n"
+              "        }\n"
+              "    }\n"
+              "}\n",
+              true);
+        ASSERT_EQUALS("[test.cpp:5]: (style) Consider using std::find_if algorithm instead of a raw loop.\n", errout.str());
+
+        check("bool pred(int x);\n"
+              "bool foo() {\n"
+              "    bool b = false;\n"
+              "    for(int x:v) {\n"
+              "        if (pred(x)) {\n"
+              "            b = true;\n"
+              "        }\n"
+              "    }\n"
+              "    if(b) {}\n"
+              "    return true;\n"
+              "}\n",
+              true);
+        ASSERT_EQUALS("[test.cpp:6]: (style) Consider using std::any_of, std::all_of, std::none_of, or std::accumulate algorithm instead of a raw loop.\n", errout.str());
+
+        check("bool pred(int x);\n"
+              "bool foo() {\n"
+              "    bool b = false;\n"
+              "    for(int x:v) {\n"
+              "        if (pred(x)) {\n"
+              "            b |= true;\n"
+              "        }\n"
+              "    }\n"
+              "    return true;\n"
+              "}\n",
+              true);
+        ASSERT_EQUALS("[test.cpp:6]: (style) Consider using std::any_of, std::all_of, std::none_of, or std::accumulate algorithm instead of a raw loop.\n", errout.str());
+
+        check("bool pred(int x);\n"
+              "bool foo() {\n"
+              "    bool b = false;\n"
+              "    for(int x:v) {\n"
+              "        if (pred(x)) {\n"
+              "            b &= true;\n"
+              "        }\n"
+              "    }\n"
+              "    return true;\n"
+              "}\n",
+              true);
+        ASSERT_EQUALS("[test.cpp:6]: (style) Consider using std::any_of, std::all_of, std::none_of, or std::accumulate algorithm instead of a raw loop.\n", errout.str());
+
+        check("bool pred(int x);\n"
+              "bool foo() {\n"
+              "    for(int x:v) {\n"
+              "        if (pred(x)) {\n"
+              "            return false; \n"
+              "        }\n"
+              "        return true;\n"
+              "    }\n"
+              "}\n",
+              true);
         ASSERT_EQUALS("", errout.str());
 
-        check("void f(const std::vector<std::string> &v) {\n"
-              "  for (const std::string& s : v) {\n"
-              "    if (s.find(x) != string::npos) {}\n"
-              "  }\n"
-              "}", true);
+        // There is no transform_if
+        check("bool pred(int x);\n"
+              "void foo() {\n"
+              "    std::vector<int> c;\n"
+              "    for(int x:v) {\n"
+              "        if (pred(x)) {\n"
+              "            c.push_back(x + 1); \n"
+              "        }\n"
+              "    }\n"
+              "}\n",
+              true);
         ASSERT_EQUALS("", errout.str());
+
+        check("bool pred(int x);\n"
+              "void foo() {\n"
+              "    for(int& x:v) {\n"
+              "        x++;\n"
+              "        if (pred(x)) {\n"
+              "            x = 1; \n"
+              "        }\n"
+              "    }\n"
+              "}\n",
+              true);
+        ASSERT_EQUALS("", errout.str());
+
+        check("bool pred(int x);\n"
+              "void f();\n"
+              "void foo() {\n"
+              "    for(int x:v) {\n"
+              "        if (pred(x)) {\n"
+              "            if(x) { return; }\n"
+              "            break; \n"
+              "        }\n"
+              "    }\n"
+              "}\n",
+              true);
+        ASSERT_EQUALS("", errout.str());
+    }
+
+    void loopAlgoMinMax() {
+        check("void foo() {\n"
+              "    int n = 0;\n"
+              "    for(int x:v)\n"
+              "        n = x > n ? x : n;\n"
+              "}\n",
+              true);
+        ASSERT_EQUALS("[test.cpp:4]: (style) Consider using std::max_element algorithm instead of a raw loop.\n", errout.str());
+
+        check("void foo() {\n"
+              "    int n = 0;\n"
+              "    for(int x:v)\n"
+              "        n = x < n ? x : n;\n"
+              "}\n",
+              true);
+        ASSERT_EQUALS("[test.cpp:4]: (style) Consider using std::min_element algorithm instead of a raw loop.\n", errout.str());
+
+        check("void foo() {\n"
+              "    int n = 0;\n"
+              "    for(int x:v)\n"
+              "        n = x > n ? n : x;\n"
+              "}\n",
+              true);
+        ASSERT_EQUALS("[test.cpp:4]: (style) Consider using std::min_element algorithm instead of a raw loop.\n", errout.str());
+
+        check("void foo() {\n"
+              "    int n = 0;\n"
+              "    for(int x:v)\n"
+              "        n = x < n ? n : x;\n"
+              "}\n",
+              true);
+        ASSERT_EQUALS("[test.cpp:4]: (style) Consider using std::max_element algorithm instead of a raw loop.\n", errout.str());
+
+        check("void foo(int m) {\n"
+              "    int n = 0;\n"
+              "    for(int x:v)\n"
+              "        n = x > m ? x : n;\n"
+              "}\n",
+              true);
+        ASSERT_EQUALS("[test.cpp:4]: (style) Consider using std::accumulate algorithm instead of a raw loop.\n", errout.str());
     }
 };
 

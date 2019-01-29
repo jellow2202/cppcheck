@@ -1,6 +1,6 @@
 /*
  * Cppcheck - A tool for static C/C++ code analysis
- * Copyright (C) 2007-2017 Cppcheck team.
+ * Copyright (C) 2007-2018 Cppcheck team.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -17,6 +17,7 @@
  */
 
 #include "checknullpointer.h"
+#include "checkuninitvar.h"
 #include "library.h"
 #include "settings.h"
 #include "testsuite.h"
@@ -38,16 +39,16 @@ public:
 private:
     Settings settings;
 
-    void run() override {
+    void run() OVERRIDE {
         // Load std.cfg configuration
         {
             const char xmldata[] = "<?xml version=\"1.0\"?>\n"
-                                   "<def>\n"
-                                   "  <function name=\"strcpy\">\n"
-                                   "    <arg nr=\"1\"><not-null/></arg>\n"
-                                   "    <arg nr=\"2\"><not-null/></arg>\n"
-                                   "  </function>\n"
-                                   "</def>";
+            "<def>\n"
+            "  <function name=\"strcpy\">\n"
+            "    <arg nr=\"1\"><not-null/></arg>\n"
+            "    <arg nr=\"2\"><not-null/></arg>\n"
+            "  </function>\n"
+            "</def>";
             tinyxml2::XMLDocument doc;
             doc.Parse(xmldata, sizeof(xmldata));
             settings.library.load(doc);
@@ -82,6 +83,7 @@ private:
         TEST_CASE(nullpointer28); // #6491
         TEST_CASE(nullpointer30); // #6392
         TEST_CASE(nullpointer31); // #8482
+        TEST_CASE(nullpointer32); // #8460
         TEST_CASE(nullpointer_addressOf); // address of
         TEST_CASE(nullpointerSwitch); // #2626
         TEST_CASE(nullpointer_cast); // #4692
@@ -107,6 +109,8 @@ private:
         TEST_CASE(ticket6505);
         TEST_CASE(subtract);
         TEST_CASE(addNull);
+
+        TEST_CASE(ctu);
     }
 
     void check(const char code[], bool inconclusive = false, const char filename[] = "test.cpp") {
@@ -1341,9 +1345,8 @@ private:
               "  int i = s ? s->value + 1 \n"
               "            : s->value - 1; // <-- null ptr dereference \n"
               "  return i;\n"
-              "}\n"
-              "int main(){f(0);}\n", true);
-        ASSERT_EQUALS("[test.cpp:4]: (warning) Possible null pointer dereference: s\n", errout.str());
+              "}\n");
+        TODO_ASSERT_EQUALS("[test.cpp:4]: (warning) Possible null pointer dereference: s\n", "", errout.str());
     }
 
     void nullpointer30() { // #6392
@@ -1374,6 +1377,18 @@ private:
               "    (void)f->x;\n"
               "}\n", true);
         ASSERT_EQUALS("", errout.str());
+    }
+
+    void nullpointer32() { // #8460
+        check("int f(int * ptr) {\n"
+              "  if(ptr)\n"
+              "  { return 0;}\n"
+              "  else{\n"
+              "    int *p1 = ptr;\n"
+              "    return *p1;\n"
+              "  }\n"
+              "}\n", true);
+        ASSERT_EQUALS("[test.cpp:2] -> [test.cpp:6]: (warning) Either the condition 'ptr' is redundant or there is possible null pointer dereference: p1.\n", errout.str());
     }
 
     void nullpointer_addressOf() { // address of
@@ -2058,12 +2073,12 @@ private:
               "}", true);
         ASSERT_EQUALS("[test.cpp:9]: (error) Null pointer dereference: p\n"
                       "[test.cpp:10]: (error) Null pointer dereference: p\n"
+                      "[test.cpp:11]: (error) Null pointer dereference: p\n"
+                      "[test.cpp:12]: (warning, inconclusive) Possible null pointer dereference: p\n"
                       "[test.cpp:3]: (error) Null pointer dereference\n"
                       "[test.cpp:5]: (error) Null pointer dereference\n"
                       "[test.cpp:7]: (error) Null pointer dereference\n"
                       "[test.cpp:8]: (error) Null pointer dereference\n"
-                      /*"[test.cpp:11]: (error) Possible null pointer dereference: p\n"
-                      "[test.cpp:12]: (error) Possible null pointer dereference: p\n"*/
                       , errout.str());
 
         check("void f(std::string s1) {\n"
@@ -2580,7 +2595,7 @@ private:
               "  p = s - 20;\n"
               "}\n"
               "void bar() { foo(0); }\n");
-        ASSERT_EQUALS("[test.cpp:2]: (error) Overflow in pointer arithmetic, NULL pointer is subtracted.\n", errout.str());
+        TODO_ASSERT_EQUALS("[test.cpp:2]: (error) Overflow in pointer arithmetic, NULL pointer is subtracted.\n", "", errout.str());
 
         check("void foo(char *s) {\n"
               "  if (!s) {}\n"
@@ -2592,7 +2607,7 @@ private:
               "  s -= 20;\n"
               "}\n"
               "void bar() { foo(0); }\n");
-        ASSERT_EQUALS("[test.cpp:2]: (error) Overflow in pointer arithmetic, NULL pointer is subtracted.\n", errout.str());
+        TODO_ASSERT_EQUALS("[test.cpp:2]: (error) Overflow in pointer arithmetic, NULL pointer is subtracted.\n", "", errout.str());
 
         check("void foo(char *s) {\n"
               "  if (!s) {}\n"
@@ -2612,7 +2627,7 @@ private:
               "  char * p = s + 20;\n"
               "}\n"
               "void bar() { foo(0); }\n");
-        ASSERT_EQUALS("[test.cpp:2]: (error) Pointer addition with NULL pointer.\n", errout.str());
+        TODO_ASSERT_EQUALS("[test.cpp:2]: (error) Pointer addition with NULL pointer.\n", "", errout.str());
 
         check("void foo(char *s) {\n"
               "  if (!s) {}\n"
@@ -2624,7 +2639,7 @@ private:
               "  char * p = 20 + s;\n"
               "}\n"
               "void bar() { foo(0); }\n");
-        ASSERT_EQUALS("[test.cpp:2]: (error) Pointer addition with NULL pointer.\n", errout.str());
+        TODO_ASSERT_EQUALS("[test.cpp:2]: (error) Pointer addition with NULL pointer.\n", "", errout.str());
 
         check("void foo(char *s) {\n"
               "  if (!s) {}\n"
@@ -2636,7 +2651,7 @@ private:
               "  s += 20;\n"
               "}\n"
               "void bar() { foo(0); }\n");
-        ASSERT_EQUALS("[test.cpp:2]: (error) Pointer addition with NULL pointer.\n", errout.str());
+        TODO_ASSERT_EQUALS("[test.cpp:2]: (error) Pointer addition with NULL pointer.\n", "", errout.str());
 
         check("void foo(char *s) {\n"
               "  if (!s) {}\n"
@@ -2653,6 +2668,98 @@ private:
         check("class foo {};\n"
               "const char* get() const { return 0; }\n"
               "void f(foo x) { if (get()) x += get(); }\n");
+        ASSERT_EQUALS("", errout.str());
+    }
+
+    void ctu(const char code[]) {
+        // Clear the error buffer..
+        errout.str("");
+
+        // Tokenize..
+        Tokenizer tokenizer(&settings, this);
+        std::istringstream istr(code);
+        tokenizer.tokenize(istr, "test.cpp");
+
+        CTU::FileInfo *ctu = CTU::getFileInfo(&tokenizer);
+
+        // Check code..
+        std::list<Check::FileInfo*> fileInfo;
+        CheckNullPointer check(&tokenizer, &settings, this);
+        fileInfo.push_back(check.getFileInfo(&tokenizer, &settings));
+        check.analyseWholeProgram(ctu, fileInfo, settings, *this);
+        while (!fileInfo.empty()) {
+            delete fileInfo.back();
+            fileInfo.pop_back();
+        }
+        delete ctu;
+    }
+
+    void ctu() {
+        setMultiline();
+
+        ctu("void f(int *fp) {\n"
+            "    a = *fp;\n"
+            "}\n"
+            "int main() {\n"
+            "  int *p = 0;\n"
+            "  f(p);\n"
+            "}");
+        ASSERT_EQUALS("test.cpp:2:error:Null pointer dereference: fp\n"
+                      "test.cpp:5:note:Assignment 'p=0', assigned value is 0\n"
+                      "test.cpp:6:note:Calling function f, 1st argument is null\n"
+                      "test.cpp:2:note:Dereferencing argument fp that is null\n", errout.str());
+
+        ctu("void use(int *p) { a = *p + 3; }\n"
+            "void call(int x, int *p) { x++; use(p); }\n"
+            "int main() {\n"
+            "  call(4,0);\n"
+            "}");
+        ASSERT_EQUALS("test.cpp:1:error:Null pointer dereference: p\n"
+                      "test.cpp:4:note:Calling function call, 2nd argument is null\n"
+                      "test.cpp:2:note:Calling function use, 1st argument is null\n"
+                      "test.cpp:1:note:Dereferencing argument p that is null\n", errout.str());
+
+        ctu("void dostuff(int *x, int *y) {\n"
+            "  if (!var)\n"
+            "    return -1;\n"  // <- early return
+            "  *x = *y;\n"
+            "}\n"
+            "\n"
+            "void f() {\n"
+            "  dostuff(a, 0);\n"
+            "}");
+        ASSERT_EQUALS("", errout.str());
+
+        ctu("void dostuff(int *x, int *y) {\n"
+            "  if (cond)\n"
+            "    *y = -1;\n"  // <- conditionally written
+            "  *x = *y;\n"
+            "}\n"
+            "\n"
+            "void f() {\n"
+            "  dostuff(a, 0);\n"
+            "}");
+        ASSERT_EQUALS("", errout.str());
+
+        // else
+        ctu("void dostuff(int mask, int *p) {\n"
+            "  if (mask == 13) ;\n"
+            "  else *p = 45;\n"
+            "}\n"
+            "\n"
+            "void f() {\n"
+            "  dostuff(0, 0);\n"
+            "}");
+        ASSERT_EQUALS("", errout.str());
+
+        // ?, &&, ||
+        ctu("void dostuff(int mask, int *p) {\n"
+            "  x = (mask & 1) ? *p : 0;\n"
+            "}\n"
+            "\n"
+            "void f() {\n"
+            "  dostuff(0, 0);\n"
+            "}");
         ASSERT_EQUALS("", errout.str());
     }
 };

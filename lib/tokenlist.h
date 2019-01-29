@@ -43,11 +43,11 @@ public:
     ~TokenList();
 
     void setSettings(const Settings *settings) {
-        _settings = settings;
+        mSettings = settings;
     }
 
     const Settings *getSettings() const {
-        return _settings;
+        return mSettings;
     }
 
     /** @return the source file path. e.g. "file.cpp" */
@@ -55,12 +55,12 @@ public:
 
     /** Is the code C. Used for bailouts */
     bool isC() const {
-        return _isC;
+        return mIsC;
     }
 
     /** Is the code CPP. Used for bailouts */
     bool isCPP() const {
-        return _isCPP;
+        return mIsCpp;
     }
 
     /**
@@ -105,18 +105,18 @@ public:
 
     /** get first token of list */
     const Token *front() const {
-        return _tokensFrontBack.front;
+        return mTokensFrontBack.front;
     }
     Token *front() {
-        return _tokensFrontBack.front;
+        return mTokensFrontBack.front;
     }
 
     /** get last token of list */
     const Token *back() const {
-        return _tokensFrontBack.back;
+        return mTokensFrontBack.back;
     }
     Token *back() {
-        return _tokensFrontBack.back;
+        return mTokensFrontBack.back;
     }
 
     /**
@@ -125,8 +125,10 @@ public:
      * @return vector with filenames
      */
     const std::vector<std::string>& getFiles() const {
-        return _files;
+        return mFiles;
     }
+
+    std::string getOrigFile(const Token *tok) const;
 
     /**
      * get filename for given token
@@ -182,16 +184,19 @@ private:
     TokenList &operator=(const TokenList &);
 
     /** Token list */
-    TokensFrontBack _tokensFrontBack;
+    TokensFrontBack mTokensFrontBack;
 
     /** filenames for the tokenized source code (source + included) */
-    std::vector<std::string> _files;
+    std::vector<std::string> mFiles;
+
+    /** Original filenames for the tokenized source code (source + included) */
+    std::vector<std::string> mOrigFiles;
 
     /** settings */
-    const Settings* _settings;
+    const Settings* mSettings;
 
     /** File is known to be C/C++ code */
-    bool _isC, _isCPP;
+    bool mIsC, mIsCpp;
 };
 
 /// @}

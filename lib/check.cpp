@@ -1,6 +1,6 @@
 /*
  * Cppcheck - A tool for static C/C++ code analysis
- * Copyright (C) 2007-2017 Cppcheck team.
+ * Copyright (C) 2007-2018 Cppcheck team.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -25,7 +25,7 @@
 //---------------------------------------------------------------------------
 
 Check::Check(const std::string &aname)
-    : _tokenizer(nullptr), _settings(nullptr), _errorLogger(nullptr), _name(aname)
+    : mTokenizer(nullptr), mSettings(nullptr), mErrorLogger(nullptr), mName(aname)
 {
     for (std::list<Check*>::iterator i = instances().begin(); i != instances().end(); ++i) {
         if ((*i)->name() > aname) {

@@ -1,6 +1,6 @@
 /*
  * Cppcheck - A tool for static C/C++ code analysis
- * Copyright (C) 2007-2017 Cppcheck team.
+ * Copyright (C) 2007-2018 Cppcheck team.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -54,7 +54,7 @@ public:
     }
 
     /** @brief Run checks against the normal token list */
-    void runChecks(const Tokenizer *tokenizer, const Settings *settings, ErrorLogger *errorLogger) override {
+    void runChecks(const Tokenizer *tokenizer, const Settings *settings, ErrorLogger *errorLogger) OVERRIDE {
         CheckOther checkOther(tokenizer, settings, errorLogger);
 
         // Checks
@@ -81,10 +81,12 @@ public:
         checkOther.checkUnusedLabel();
         checkOther.checkEvaluationOrder();
         checkOther.checkFuncArgNamesDifferent();
+        checkOther.checkShadowVariables();
+        checkOther.checkConstArgument();
     }
 
     /** @brief Run checks against the simplified token list */
-    void runSimplifiedChecks(const Tokenizer *tokenizer, const Settings *settings, ErrorLogger *errorLogger) override {
+    void runSimplifiedChecks(const Tokenizer *tokenizer, const Settings *settings, ErrorLogger *errorLogger) OVERRIDE {
         CheckOther checkOther(tokenizer, settings, errorLogger);
 
         // Checks
@@ -211,6 +213,11 @@ public:
     /** @brief %Check if function declaration and definition argument names different */
     void checkFuncArgNamesDifferent();
 
+    /** @brief %Check for shadow variables. Less noisy than gcc/clang -Wshadow. */
+    void checkShadowVariables();
+
+    void checkConstArgument();
+
 private:
     // Error messages..
     void checkComparisonFunctionIsAlwaysTrueOrFalseError(const Token* tok, const std::string &functionName, const std::string &varName, const bool result);
@@ -237,12 +244,12 @@ private:
     void suspiciousEqualityComparisonError(const Token* tok);
     void selfAssignmentError(const Token *tok, const std::string &varname);
     void misusedScopeObjectError(const Token *tok, const std::string &varname);
-    void duplicateBranchError(const Token *tok1, const Token *tok2);
-    void duplicateAssignExpressionError(const Token *tok1, const Token *tok2);
-    void oppositeExpressionError(const Token *tok1, const Token *tok2, const std::string &op);
-    void duplicateExpressionError(const Token *tok1, const Token *tok2, const std::string &op);
+    void duplicateBranchError(const Token *tok1, const Token *tok2, ErrorPath errors);
+    void duplicateAssignExpressionError(const Token *tok1, const Token *tok2, bool inconclusive);
+    void oppositeExpressionError(const Token *opTok, ErrorPath errors);
+    void duplicateExpressionError(const Token *tok1, const Token *tok2, const Token *opTok, ErrorPath errors);
     void duplicateValueTernaryError(const Token *tok);
-    void duplicateExpressionTernaryError(const Token *tok);
+    void duplicateExpressionTernaryError(const Token *tok, ErrorPath errors);
     void duplicateBreakError(const Token *tok, bool inconclusive);
     void unreachableCodeError(const Token* tok, bool inconclusive);
     void unsignedLessThanZeroError(const Token *tok, const std::string &varname, bool inconclusive);
@@ -263,9 +270,13 @@ private:
     void accessMovedError(const Token *tok, const std::string &varname, const ValueFlow::Value *value, bool inconclusive);
     void funcArgNamesDifferent(const std::string & functionName, size_t index, const Token* declaration, const Token* definition);
     void funcArgOrderDifferent(const std::string & functionName, const Token * declaration, const Token * definition, const std::vector<const Token*> & declarations, const std::vector<const Token*> & definitions);
+    void shadowError(const Token *var, const Token *shadowed, bool shadowVar);
+    void constArgumentError(const Token *tok, const Token *ftok, const ValueFlow::Value *value);
 
-    void getErrorMessages(ErrorLogger *errorLogger, const Settings *settings) const override {
+    void getErrorMessages(ErrorLogger *errorLogger, const Settings *settings) const OVERRIDE {
         CheckOther c(nullptr, settings, errorLogger);
+
+        ErrorPath errorPath;
 
         // error
         c.zerodivError(nullptr, nullptr);
@@ -275,6 +286,7 @@ private:
         c.negativeBitwiseShiftError(nullptr, 2);
         c.checkPipeParameterSizeError(nullptr,  "varname", "dimension");
         c.raceAfterInterlockedDecrementError(nullptr);
+        c.invalidFreeError(nullptr, false);
 
         //performance
         c.redundantCopyError(nullptr,  "varname");
@@ -298,11 +310,12 @@ private:
         c.selfAssignmentError(nullptr,  "varname");
         c.clarifyCalculationError(nullptr,  "+");
         c.clarifyStatementError(nullptr);
-        c.duplicateBranchError(nullptr, nullptr);
-        c.oppositeExpressionError(nullptr, nullptr, "&&");
-        c.duplicateExpressionError(nullptr, nullptr, "&&");
+        c.duplicateBranchError(nullptr, nullptr, errorPath);
+        c.duplicateAssignExpressionError(nullptr, nullptr, true);
+        c.oppositeExpressionError(nullptr, errorPath);
+        c.duplicateExpressionError(nullptr, nullptr, nullptr, errorPath);
         c.duplicateValueTernaryError(nullptr);
-        c.duplicateExpressionTernaryError(nullptr);
+        c.duplicateExpressionTernaryError(nullptr, errorPath);
         c.duplicateBreakError(nullptr,  false);
         c.unreachableCodeError(nullptr,  false);
         c.unsignedLessThanZeroError(nullptr,  "varname", false);
@@ -320,6 +333,10 @@ private:
         c.unknownEvaluationOrder(nullptr);
         c.accessMovedError(nullptr, "v", nullptr, false);
         c.funcArgNamesDifferent("function", 1, nullptr, nullptr);
+        c.redundantBitwiseOperationInSwitchError(nullptr, "varname");
+        c.shadowError(nullptr, nullptr, false);
+        c.shadowError(nullptr, nullptr, true);
+        c.constArgumentError(nullptr, nullptr, nullptr);
 
         const std::vector<const Token *> nullvec;
         c.funcArgOrderDifferent("function", nullptr, nullptr, nullvec, nullvec);
@@ -329,7 +346,7 @@ private:
         return "Other";
     }
 
-    std::string classInfo() const override {
+    std::string classInfo() const OVERRIDE {
         return "Other checks\n"
 
                // error
@@ -368,7 +385,7 @@ private:
                "- assignment of a variable to itself\n"
                "- Comparison of values leading always to true or false\n"
                "- Clarify calculation with parentheses\n"
-               "- suspicious comparison of '\\0' with a char* variable\n"
+               "- suspicious comparison of '\\0' with a char\\* variable\n"
                "- duplicate break statement\n"
                "- unreachable code\n"
                "- testing if unsigned variable is negative/positive\n"
@@ -378,10 +395,11 @@ private:
                "- comma in return statement (the comma can easily be misread as a semicolon).\n"
                "- prefer erfc, expm1 or log1p to avoid loss of precision.\n"
                "- identical code in both branches of if/else or ternary operator.\n"
-               "- redundant pointer operation on pointer like &*some_ptr.\n"
+               "- redundant pointer operation on pointer like &\\*some_ptr.\n"
                "- find unused 'goto' labels.\n"
                "- function declaration and definition argument names different.\n"
-               "- function declaration and definition argument order different.\n";
+               "- function declaration and definition argument order different.\n"
+               "- shadow variable.\n";
     }
 };
 /// @}

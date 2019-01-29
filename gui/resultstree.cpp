@@ -18,7 +18,6 @@
 
 #include <QApplication>
 #include <QWidget>
-#include <QStandardItem>
 #include <QDebug>
 #include <QString>
 #include <QStringList>
@@ -1131,12 +1130,7 @@ void ResultsTree::saveErrors(Report *report, QStandardItem *fileItem) const
 static int indexOf(const QList<ErrorItem> &list, const ErrorItem &item)
 {
     for (int i = 0; i < list.size(); i++) {
-        if (list[i].errorId == item.errorId &&
-            list[i].errorPath == item.errorPath &&
-            list[i].file0 == item.file0 &&
-            list[i].message == item.message &&
-            list[i].inconclusive == item.inconclusive &&
-            list[i].severity == item.severity) {
+        if (ErrorItem::sameCID(item, list[i])) {
             return i;
         }
     }

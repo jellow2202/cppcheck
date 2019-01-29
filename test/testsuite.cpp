@@ -1,6 +1,6 @@
 /*
  * Cppcheck - A tool for static C/C++ code analysis
- * Copyright (C) 2007-2017 Cppcheck team.
+ * Copyright (C) 2007-2018 Cppcheck team.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -33,7 +33,7 @@ std::ostringstream output;
  **/
 
 struct CompareFixtures {
-    bool operator()(const TestFixture* lhs, const TestFixture* rhs) {
+    bool operator()(const TestFixture* lhs, const TestFixture* rhs) const {
         return lhs->classname < rhs->classname;
     }
 };
@@ -73,7 +73,8 @@ std::size_t TestFixture::succeeded_todos_counter = 0;
 std::set<std::string> TestFixture::missingLibs;
 
 TestFixture::TestFixture(const char * const _name)
-    :quiet_tests(false),
+    :mVerbose(false),
+     quiet_tests(false),
      classname(_name)
 {
     TestRegistry::theInstance().addTest(this);
@@ -82,9 +83,14 @@ TestFixture::TestFixture(const char * const _name)
 
 bool TestFixture::prepareTest(const char testname[])
 {
+    mVerbose = false;
+    mTemplateFormat.clear();
+    mTemplateLocation.clear();
+
     // Check if tests should be executed
     if (testToRun.empty() || testToRun == testname) {
         // Tests will be executed - prepare them
+        mTestname = testname;
         ++countTests;
         if (quiet_tests) {
             std::putchar('.'); // Use putchar to write through redirection of std::cout/cerr
@@ -95,6 +101,13 @@ bool TestFixture::prepareTest(const char testname[])
         return true;
     }
     return false;
+}
+
+std::string TestFixture::getLocationStr(const char * const filename, const unsigned int linenr) const
+{
+    std::ostringstream ret;
+    ret << filename << ':' << linenr << '(' << classname << "::" << mTestname << ')';
+    return ret.str();
 }
 
 static std::string writestr(const std::string &str, bool gccStyle = false)
@@ -125,7 +138,7 @@ void TestFixture::assert_(const char * const filename, const unsigned int linenr
 {
     if (!condition) {
         ++fails_counter;
-        errmsg << filename << ':' << linenr << ": Assertion failed." << std::endl << "_____" << std::endl;
+        errmsg << getLocationStr(filename, linenr) << ": Assertion failed." << std::endl << "_____" << std::endl;
     }
 }
 
@@ -133,7 +146,7 @@ void TestFixture::assertEquals(const char * const filename, const unsigned int l
 {
     if (expected != actual) {
         ++fails_counter;
-        errmsg << filename << ':' << linenr << ": Assertion failed. " << std::endl
+        errmsg << getLocationStr(filename, linenr) << ": Assertion failed. " << std::endl
                << "Expected: " <<  std::endl
                << writestr(expected)  << std::endl
                << "Actual: " << std::endl
@@ -149,10 +162,10 @@ std::string TestFixture::deleteLineNumber(const std::string &message) const
     std::string result(message);
     // delete line number in "...:NUMBER:..."
     std::string::size_type pos = 0;
-    std::string::size_type after = 0;
     while ((pos = result.find(':', pos)) != std::string::npos) {
         // get number
         if (pos + 1 == result.find_first_of("0123456789", pos + 1)) {
+            std::string::size_type after;
             if ((after = result.find_first_not_of("0123456789", pos + 1)) != std::string::npos
                 && result.at(after) == ':') {
                 // erase NUMBER
@@ -214,7 +227,7 @@ void TestFixture::todoAssertEquals(const char * const filename, const unsigned i
                                    const std::string &actual) const
 {
     if (wanted == actual) {
-        errmsg << filename << ':' << linenr << ": Assertion succeeded unexpectedly. "
+        errmsg << getLocationStr(filename, linenr) << ": Assertion succeeded unexpectedly. "
                << "Result: " << writestr(wanted, true)  << std::endl << "_____" << std::endl;
 
         ++succeeded_todos_counter;
@@ -236,7 +249,7 @@ void TestFixture::todoAssertEquals(const char * const filename, const unsigned i
 void TestFixture::assertThrow(const char * const filename, const unsigned int linenr) const
 {
     ++fails_counter;
-    errmsg << filename << ':' << linenr << ": Assertion succeeded. "
+    errmsg << getLocationStr(filename, linenr) << ": Assertion succeeded. "
            << "The expected exception was thrown" << std::endl << "_____" << std::endl;
 
 }
@@ -244,7 +257,7 @@ void TestFixture::assertThrow(const char * const filename, const unsigned int li
 void TestFixture::assertThrowFail(const char * const filename, const unsigned int linenr) const
 {
     ++fails_counter;
-    errmsg << filename << ':' << linenr << ": Assertion failed. "
+    errmsg << getLocationStr(filename, linenr) << ": Assertion failed. "
            << "The expected exception was not thrown"  << std::endl << "_____" << std::endl;
 
 }
@@ -252,7 +265,7 @@ void TestFixture::assertThrowFail(const char * const filename, const unsigned in
 void TestFixture::assertNoThrowFail(const char * const filename, const unsigned int linenr) const
 {
     ++fails_counter;
-    errmsg << filename << ':' << linenr << ": Assertion failed. "
+    errmsg << getLocationStr(filename, linenr) << ": Assertion failed. "
            << "Unexpected exception was thrown"  << std::endl << "_____" << std::endl;
 
 }
@@ -267,8 +280,6 @@ void TestFixture::run(const std::string &str)
     testToRun = str;
     if (quiet_tests) {
         std::cout << '\n' << classname << ':';
-    }
-    if (quiet_tests) {
         REDIRECT;
         run();
     } else
@@ -329,7 +340,7 @@ void TestFixture::reportOut(const std::string & outmsg)
 
 void TestFixture::reportErr(const ErrorLogger::ErrorMessage &msg)
 {
-    const std::string errormessage(msg.toString(false));
+    const std::string errormessage(msg.toString(mVerbose, mTemplateFormat, mTemplateLocation));
     if (errout.str().find(errormessage) == std::string::npos)
         errout << errormessage << std::endl;
 }

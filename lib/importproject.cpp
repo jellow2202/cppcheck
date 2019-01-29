@@ -25,6 +25,7 @@
 #include "tokenize.h"
 #include "tokenlist.h"
 #include "utils.h"
+#include "../externals/picojson.h"
 
 #include <cstring>
 #include <fstream>
@@ -116,7 +117,7 @@ static bool simplifyPathWithVariables(std::string &s, std::map<std::string, std:
         if (it1 == variables.end()) {
             const char *envValue = std::getenv(var.c_str());
             if (!envValue) {
-                //! @TODO generate a debug/info message about undefined variable
+                //! \todo generate a debug/info message about undefined variable
                 break;
             }
             variables[var] = std::string(envValue);
@@ -138,12 +139,12 @@ void ImportProject::FileSettings::setIncludePaths(const std::string &basepath, c
     uniqueIncludePaths.sort();
     uniqueIncludePaths.unique();
 
-    for (std::list<std::string>::const_iterator it = uniqueIncludePaths.begin(); it != uniqueIncludePaths.end(); ++it) {
-        if (it->empty())
+    for (const std::string &it : uniqueIncludePaths) {
+        if (it.empty())
             continue;
-        if (it->compare(0,2,"%(")==0)
+        if (it.compare(0,2,"%(")==0)
             continue;
-        std::string s(Path::fromNativeSeparators(*it));
+        std::string s(Path::fromNativeSeparators(it));
         if (s[0] == '/' || (s.size() > 1U && s.compare(1,2,":/") == 0)) {
             if (!endsWith(s,'/'))
                 s += '/';
@@ -154,10 +155,10 @@ void ImportProject::FileSettings::setIncludePaths(const std::string &basepath, c
         if (endsWith(s,'/')) // this is a temporary hack, simplifyPath can crash if path ends with '/'
             s.erase(s.size() - 1U); // TODO: Use std::string::pop_back() as soon as travis supports it
 
-        if (s.find("$(")==std::string::npos) {
+        if (s.find("$(") == std::string::npos) {
             s = Path::simplifyPath(basepath + s);
         } else {
-            if (!simplifyPathWithVariables(s,variables))
+            if (!simplifyPathWithVariables(s, variables))
                 continue;
         }
         if (s.empty())
@@ -167,125 +168,127 @@ void ImportProject::FileSettings::setIncludePaths(const std::string &basepath, c
     includePaths.swap(I);
 }
 
-void ImportProject::import(const std::string &filename)
+ImportProject::Type ImportProject::import(const std::string &filename)
 {
     std::ifstream fin(filename);
     if (!fin.is_open())
-        return;
-    if (filename.find("compile_commands.json") != std::string::npos) {
+        return MISSING;
+    if (endsWith(filename, ".json", 5)) {
         importCompileCommands(fin);
-    } else if (filename.find(".sln") != std::string::npos) {
+        return COMPILE_DB;
+    } else if (endsWith(filename, ".sln", 4)) {
         std::string path(Path::getPathFromFilename(Path::fromNativeSeparators(filename)));
         if (!path.empty() && !endsWith(path,'/'))
             path += '/';
         importSln(fin,path);
-    } else if (filename.find(".vcxproj") != std::string::npos) {
+        return VS_SLN;
+    } else if (endsWith(filename, ".vcxproj", 8)) {
         std::map<std::string, std::string, cppcheck::stricmp> variables;
         importVcxproj(filename, variables, emptyString);
-    } else if (filename.find(".bpr") != std::string::npos) {
+        return VS_VCXPROJ;
+    } else if (endsWith(filename, ".bpr", 4)) {
         importBcb6Prj(filename);
+        return BORLAND;
     }
+    return UNKNOWN;
+}
+
+static std::string readUntil(const std::string &command, std::string::size_type *pos, const char until[])
+{
+    std::string ret;
+    bool str = false;
+    while (*pos < command.size() && (str || !std::strchr(until, command[*pos]))) {
+        if (command[*pos] == '\\')
+            ++*pos;
+        if (*pos < command.size())
+            ret += command[(*pos)++];
+        if (endsWith(ret, '\"'))
+            str = !str;
+    }
+    return ret;
+}
+
+void ImportProject::FileSettings::parseCommand(const std::string &command)
+{
+    std::string defs;
+
+    // Parse command..
+    std::string::size_type pos = 0;
+    while (std::string::npos != (pos = command.find(' ',pos))) {
+        while (pos < command.size() && command[pos] == ' ')
+            pos++;
+        if (pos >= command.size())
+            break;
+        if (command[pos] != '/' && command[pos] != '-')
+            continue;
+        pos++;
+        if (pos >= command.size())
+            break;
+        const char F = command[pos++];
+        if (std::strchr("DUI", F)) {
+            while (pos < command.size() && command[pos] == ' ')
+                ++pos;
+        }
+        const std::string fval = readUntil(command, &pos, " =");
+        if (F=='D') {
+            const std::string defval = readUntil(command, &pos, " ");
+            defs += fval;
+            if (!defval.empty())
+                defs += defval;
+            defs += ';';
+        } else if (F=='U')
+            undefs.insert(fval);
+        else if (F=='I')
+            includePaths.push_back(fval);
+        else if (F=='s' && fval.compare(0,3,"td=") == 0)
+            standard = fval.substr(3);
+        else if (F == 'i' && fval == "system") {
+            ++pos;
+            const std::string isystem = readUntil(command, &pos, " ");
+            systemIncludePaths.push_back(isystem);
+        }
+    }
+    setDefines(defs);
 }
 
 void ImportProject::importCompileCommands(std::istream &istr)
 {
-    std::map<std::string, std::string> values;
+    picojson::value compileCommands;
+    istr >> compileCommands;
+    if (!compileCommands.is<picojson::array>())
+        return;
 
-    // TODO: Use a JSON parser
+    for (const picojson::value &fileInfo : compileCommands.get<picojson::array>()) {
+        picojson::object obj = fileInfo.get<picojson::object>();
+        std::string dirpath = Path::fromNativeSeparators(obj["directory"].get<std::string>());
 
-    Settings settings;
-    TokenList tokenList(&settings);
-    tokenList.createTokens(istr);
-    for (const Token *tok = tokenList.front(); tok; tok = tok->next()) {
-        if (Token::Match(tok, "%str% : %str% [,}]")) {
-            const std::string& key = tok->str();
-            const std::string& value = tok->strAt(2);
-            values[key.substr(1, key.size() - 2U)] = value.substr(1, value.size() - 2U);
+        /* CMAKE produces the directory without trailing / so add it if not
+         * there - it is needed by setIncludePaths() */
+        if (!endsWith(dirpath, '/'))
+            dirpath += '/';
+
+        const std::string directory = dirpath;
+        const std::string command = obj["command"].get<std::string>();
+        const std::string file = Path::fromNativeSeparators(obj["file"].get<std::string>());
+
+        // Accept file?
+        if (!Path::acceptFile(file))
+            continue;
+
+        struct FileSettings fs;
+        if (Path::isAbsolute(file) || Path::fileExists(file))
+            fs.filename = file;
+        else {
+            std::string path = directory;
+            if (!path.empty() && !endsWith(path,'/'))
+                path += '/';
+            path += file;
+            fs.filename = Path::simplifyPath(path);
         }
-
-        else if (Token::Match(tok, "%str% : [ %str%") && tok->str() == "\"arguments\"") {
-            std::string cmd;
-            tok = tok->tokAt(2);
-            while (Token::Match(tok, ",|[ %str%")) {
-                const std::string &s = tok->next()->str();
-                cmd += ' ' + s.substr(1, s.size() - 2);
-                tok = tok->tokAt(2);
-            }
-            values["command"] = cmd.substr(1);
-        }
-
-        else if (tok->str() == "}") {
-            if (!values["file"].empty() && !values["command"].empty()) {
-                struct FileSettings fs;
-                fs.filename = Path::fromNativeSeparators(values["file"]);
-                const std::string& command = values["command"];
-                const std::string directory = Path::fromNativeSeparators(values["directory"]);
-                std::string::size_type pos = 0;
-                while (std::string::npos != (pos = command.find(' ',pos))) {
-                    pos++;
-                    if (pos >= command.size())
-                        break;
-                    if (command[pos] != '/' && command[pos] != '-')
-                        continue;
-                    pos++;
-                    if (pos >= command.size())
-                        break;
-                    const char F = command[pos++];
-                    if (std::strchr("DUI", F)) {
-                        while (pos < command.size() && command[pos] == ' ')
-                            ++pos;
-                    }
-                    std::string fval;
-                    while (pos < command.size() && command[pos] != ' ' && command[pos] != '=') {
-                        if (command[pos] != '\\')
-                            fval += command[pos];
-                        pos++;
-                    }
-                    if (F=='D') {
-                        std::string defval;
-                        bool escape = false;
-                        while (pos < command.size() && command[pos] != ' ') {
-                            if (command[pos] != '\\') {
-                                defval += command[pos];
-                                escape = false;
-                            } else {
-                                if (escape) {
-                                    defval += '\\';
-                                    escape = false;
-                                } else {
-                                    escape = true;
-                                }
-                            }
-                            pos++;
-                        }
-                        fs.defines += fval;
-                        if (!defval.empty())
-                            fs.defines += defval;
-                        fs.defines += ';';
-                    } else if (F=='U')
-                        fs.undefs.insert(fval);
-                    else if (F=='I')
-                        fs.includePaths.push_back(fval);
-                    else if (F=='s' && fval.compare(0,3,"td=") == 0)
-                        fs.standard = fval.substr(3);
-                    else if (F == 'i' && fval == "system") {
-                        ++pos;
-                        std::string isystem;
-                        while (pos < command.size() && command[pos] != ' ') {
-                            if (command[pos] != '\\')
-                                isystem += command[pos];
-                            pos++;
-                        }
-                        fs.systemIncludePaths.push_back(isystem);
-                    }
-                }
-                std::map<std::string, std::string, cppcheck::stricmp> variables;
-                fs.setIncludePaths(directory, fs.includePaths, variables);
-                fs.setDefines(fs.defines);
-                fileSettings.push_back(fs);
-            }
-            values.clear();
-        }
+        fs.parseCommand(command); // read settings; -D, -I, -U, -std
+        std::map<std::string, std::string, cppcheck::stricmp> variables;
+        fs.setIncludePaths(directory, fs.includePaths, variables);
+        fileSettings.push_back(fs);
     }
 }
 
@@ -546,26 +549,26 @@ void ImportProject::importVcxproj(const std::string &filename, std::map<std::str
         }
     }
 
-    for (std::list<std::string>::const_iterator c = compileList.begin(); c != compileList.end(); ++c) {
-        for (std::list<ProjectConfiguration>::const_iterator p = projectConfigurationList.begin(); p != projectConfigurationList.end(); ++p) {
+    for (const std::string &c : compileList) {
+        for (const ProjectConfiguration &p : projectConfigurationList) {
             FileSettings fs;
-            fs.filename = Path::simplifyPath(Path::isAbsolute(*c) ? *c : Path::getPathFromFilename(filename) + *c);
-            fs.cfg = p->name;
+            fs.filename = Path::simplifyPath(Path::isAbsolute(c) ? c : Path::getPathFromFilename(filename) + c);
+            fs.cfg = p.name;
             fs.msc = true;
             fs.useMfc = useOfMfc;
             fs.defines = "_WIN32=1";
-            if (p->platform == ProjectConfiguration::Win32)
+            if (p.platform == ProjectConfiguration::Win32)
                 fs.platformType = cppcheck::Platform::Win32W;
-            else if (p->platform == ProjectConfiguration::x64) {
+            else if (p.platform == ProjectConfiguration::x64) {
                 fs.platformType = cppcheck::Platform::Win64;
                 fs.defines += ";_WIN64=1";
             }
             std::string additionalIncludePaths;
-            for (std::list<ItemDefinitionGroup>::const_iterator i = itemDefinitionGroupList.begin(); i != itemDefinitionGroupList.end(); ++i) {
-                if (!i->conditionIsTrue(*p))
+            for (const ItemDefinitionGroup &i : itemDefinitionGroupList) {
+                if (!i.conditionIsTrue(p))
                     continue;
-                fs.defines += ';' + i->preprocessorDefinitions;
-                additionalIncludePaths += ';' + i->additionalIncludePaths;
+                fs.defines += ';' + i.preprocessorDefinitions;
+                additionalIncludePaths += ';' + i.additionalIncludePaths;
             }
             fs.setDefines(fs.defines);
             fs.setIncludePaths(Path::getPathFromFilename(filename), toStringList(includePath + ';' + additionalIncludePaths), variables);
@@ -815,7 +818,7 @@ void ImportProject::importBcb6Prj(const std::string &projectFilename)
     const std::string cppDefines  = cppPredefines + ";" + defines;
     const bool forceCppMode = (cflags.find("-P") != cflags.end());
 
-    for (std::list<std::string>::const_iterator c = compileList.begin(); c != compileList.end(); ++c) {
+    for (const std::string &c : compileList) {
         // C++ compilation is selected by file extension by default, so these
         // defines have to be configured on a per-file base.
         //
@@ -825,11 +828,11 @@ void ImportProject::importBcb6Prj(const std::string &projectFilename)
         // (http://docwiki.embarcadero.com/RADStudio/Tokyo/en/BCC32.EXE,_the_C%2B%2B_32-bit_Command-Line_Compiler)
         //
         // We can also force C++ compilation for all files using the -P command line switch.
-        const bool cppMode = forceCppMode || Path::getFilenameExtensionInLowerCase(*c) == ".cpp";
+        const bool cppMode = forceCppMode || Path::getFilenameExtensionInLowerCase(c) == ".cpp";
         FileSettings fs;
         fs.setIncludePaths(projectDir, toStringList(includePath), variables);
         fs.setDefines(cppMode ? cppDefines : defines);
-        fs.filename = Path::simplifyPath(Path::isAbsolute(*c) ? *c : projectDir + *c);
+        fs.filename = Path::simplifyPath(Path::isAbsolute(c) ? c : projectDir + c);
         fileSettings.push_back(fs);
     }
 }

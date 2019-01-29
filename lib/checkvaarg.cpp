@@ -1,6 +1,6 @@
 /*
  * Cppcheck - A tool for static C/C++ code analysis
- * Copyright (C) 2007-2017 Cppcheck team.
+ * Copyright (C) 2007-2018 Cppcheck team.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -18,6 +18,7 @@
 
 #include "checkvaarg.h"
 
+#include "astutils.h"
 #include "errorlogger.h"
 #include "settings.h"
 #include "symboldatabase.h"
@@ -46,9 +47,9 @@ static const struct CWE CWE758(758U);   // Reliance on Undefined, Unspecified, o
 
 void CheckVaarg::va_start_argument()
 {
-    const SymbolDatabase* const symbolDatabase = _tokenizer->getSymbolDatabase();
+    const SymbolDatabase* const symbolDatabase = mTokenizer->getSymbolDatabase();
     const std::size_t functions = symbolDatabase->functionScopes.size();
-    const bool printWarnings = _settings->isEnabled(Settings::WARNING);
+    const bool printWarnings = mSettings->isEnabled(Settings::WARNING);
 
     for (std::size_t i = 0; i < functions; ++i) {
         const Scope* scope = symbolDatabase->functionScopes[i];
@@ -95,7 +96,7 @@ void CheckVaarg::referenceAs_va_start_error(const Token *tok, const std::string&
 
 void CheckVaarg::va_list_usage()
 {
-    const SymbolDatabase* const symbolDatabase = _tokenizer->getSymbolDatabase();
+    const SymbolDatabase* const symbolDatabase = mTokenizer->getSymbolDatabase();
     for (const Variable* var : symbolDatabase->variableList()) {
         if (!var || var->isPointer() || var->isReference() || var->isArray() || !var->scope() || var->typeStartToken()->str() != "va_list")
             continue;
@@ -107,6 +108,10 @@ void CheckVaarg::va_list_usage()
 
         const Token* tok = var->nameToken()->next();
         for (;  tok && tok != var->scope()->bodyEnd; tok = tok->next()) {
+            // Skip lambdas
+            const Token* tok2 = findLambdaEndToken(tok);
+            if (tok2)
+                tok = tok2;
             if (Token::Match(tok, "va_start ( %varid%", var->declarationId())) {
                 if (open)
                     va_start_subsequentCallsError(tok, var->name());
@@ -139,7 +144,7 @@ void CheckVaarg::va_list_usage()
                 tok = scope->bodyEnd;
                 if (!tok)
                     return;
-            } else if (tok->str() == "goto" || (_tokenizer->isCPP() && tok->str() == "try")) {
+            } else if (tok->str() == "goto" || (mTokenizer->isCPP() && tok->str() == "try")) {
                 open = false;
                 break;
             } else if (!open && tok->varId() == var->declarationId())

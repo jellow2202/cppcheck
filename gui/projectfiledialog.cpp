@@ -34,6 +34,18 @@
 #include "library.h"
 #include "platforms.h"
 
+/** Return paths from QListWidget */
+static QStringList getPaths(const QListWidget *list)
+{
+    const int count = list->count();
+    QStringList paths;
+    for (int i = 0; i < count; i++) {
+        QListWidgetItem *item = list->item(i);
+        paths << QDir::fromNativeSeparators(item->text());
+    }
+    return paths;
+}
+
 /** Platforms shown in the platform combobox */
 static const cppcheck::Platform::PlatformType builtinPlatforms[] = {
     cppcheck::Platform::Native,
@@ -107,9 +119,9 @@ ProjectFileDialog::ProjectFileDialog(ProjectFile *projectFile, QWidget *parent)
     }
 
     // Platforms..
-    Platforms p;
+    Platforms platforms;
     for (int i = 0; i < numberOfBuiltinPlatforms; i++)
-        mUI.mComboBoxPlatform->addItem(p.get(builtinPlatforms[i]).mTitle);
+        mUI.mComboBoxPlatform->addItem(platforms.get(builtinPlatforms[i]).mTitle);
     QStringList platformFiles;
     foreach (QString sp, searchPaths) {
         if (sp.endsWith("/cfg"))
@@ -121,8 +133,8 @@ ProjectFileDialog::ProjectFileDialog(ProjectFile *projectFile, QWidget *parent)
         foreach (QFileInfo item, dir.entryInfoList()) {
             const QString platformFile = item.fileName();
 
-            cppcheck::Platform p;
-            if (!p.loadPlatformFile(applicationFilePath.toStdString().c_str(), platformFile.toStdString()))
+            cppcheck::Platform plat2;
+            if (!plat2.loadPlatformFile(applicationFilePath.toStdString().c_str(), platformFile.toStdString()))
                 continue;
 
             if (platformFiles.indexOf(platformFile) == -1)
@@ -133,6 +145,9 @@ ProjectFileDialog::ProjectFileDialog(ProjectFile *projectFile, QWidget *parent)
     mUI.mComboBoxPlatform->addItems(platformFiles);
 
     mUI.mEditTags->setValidator(new QRegExpValidator(QRegExp("[a-zA-Z0-9 ;]*"),this));
+
+    const QRegExp undefRegExp("\\s*([a-zA-Z_][a-zA-Z0-9_]*[; ]*)*");
+    mUI.mEditUndefines->setValidator(new QRegExpValidator(undefRegExp, this));
 
     connect(mUI.mButtons, &QDialogButtonBox::accepted, this, &ProjectFileDialog::ok);
     connect(mUI.mBtnBrowseBuildDir, &QPushButton::clicked, this, &ProjectFileDialog::browseBuildDir);
@@ -151,6 +166,7 @@ ProjectFileDialog::ProjectFileDialog(ProjectFile *projectFile, QWidget *parent)
     connect(mUI.mBtnIncludeDown, &QPushButton::clicked, this, &ProjectFileDialog::moveIncludePathDown);
     connect(mUI.mBtnAddSuppression, &QPushButton::clicked, this, &ProjectFileDialog::addSuppression);
     connect(mUI.mBtnRemoveSuppression, &QPushButton::clicked, this, &ProjectFileDialog::removeSuppression);
+    connect(mUI.mListSuppressions, &QListWidget::doubleClicked, this, &ProjectFileDialog::editSuppression);
     connect(mUI.mBtnBrowseMisraFile, &QPushButton::clicked, this, &ProjectFileDialog::browseMisraFile);
 
     loadFromProjectFile(projectFile);
@@ -191,6 +207,7 @@ void ProjectFileDialog::loadFromProjectFile(const ProjectFile *projectFile)
     setBuildDir(projectFile->getBuildDir());
     setIncludepaths(projectFile->getIncludeDirs());
     setDefines(projectFile->getDefines());
+    setUndefines(projectFile->getUndefines());
     setCheckPaths(projectFile->getCheckPaths());
     setImportProject(projectFile->getImportProject());
     mUI.mChkAllVsConfigs->setChecked(projectFile->getAnalyzeAllVsConfigs());
@@ -248,14 +265,7 @@ void ProjectFileDialog::loadFromProjectFile(const ProjectFile *projectFile)
         mUI.mToolClangTidy->setText(tr("Clang-tidy (not found)"));
         mUI.mToolClangTidy->setEnabled(false);
     }
-    QString tags;
-    foreach (const QString tag, projectFile->getTags()) {
-        if (tags.isEmpty())
-            tags = tag;
-        else
-            tags += ';' + tag;
-    }
-    mUI.mEditTags->setText(tags);
+    mUI.mEditTags->setText(projectFile->getTags().join(';'));
     updatePathsAndDefines();
 }
 
@@ -267,6 +277,7 @@ void ProjectFileDialog::saveToProjectFile(ProjectFile *projectFile) const
     projectFile->setAnalyzeAllVsConfigs(mUI.mChkAllVsConfigs->isChecked());
     projectFile->setIncludes(getIncludePaths());
     projectFile->setDefines(getDefines());
+    projectFile->setUndefines(getUndefines());
     projectFile->setCheckPaths(getCheckPaths());
     projectFile->setExcludedPaths(getExcludedPaths());
     projectFile->setLibraries(getLibraries());
@@ -292,9 +303,7 @@ void ProjectFileDialog::saveToProjectFile(ProjectFile *projectFile) const
     projectFile->setAddons(list);
     projectFile->setClangAnalyzer(mUI.mToolClangAnalyzer->isChecked());
     projectFile->setClangTidy(mUI.mToolClangTidy->isChecked());
-    QStringList tags(mUI.mEditTags->text().split(";"));
-    tags.removeAll(QString());
-    projectFile->setTags(tags);
+    projectFile->setTags(mUI.mEditTags->text().split(";", QString::SkipEmptyParts));
 }
 
 void ProjectFileDialog::ok()
@@ -347,6 +356,7 @@ void ProjectFileDialog::updatePathsAndDefines()
     mUI.mBtnEditCheckPath->setEnabled(!importProject);
     mUI.mBtnRemoveCheckPath->setEnabled(!importProject);
     mUI.mEditDefines->setEnabled(!importProject);
+    mUI.mEditUndefines->setEnabled(!importProject);
     mUI.mBtnAddInclude->setEnabled(!importProject);
     mUI.mBtnEditInclude->setEnabled(!importProject);
     mUI.mBtnRemoveInclude->setEnabled(!importProject);
@@ -429,52 +439,32 @@ QString ProjectFileDialog::getBuildDir() const
     return mUI.mEditBuildDir->text();
 }
 
-
 QStringList ProjectFileDialog::getIncludePaths() const
 {
-    const int count = mUI.mListIncludeDirs->count();
-    QStringList includePaths;
-    for (int i = 0; i < count; i++) {
-        QListWidgetItem *item = mUI.mListIncludeDirs->item(i);
-        includePaths << QDir::fromNativeSeparators(item->text());
-    }
-    return includePaths;
+    return getPaths(mUI.mListIncludeDirs);
 }
 
 QStringList ProjectFileDialog::getDefines() const
 {
-    QString define = mUI.mEditDefines->text();
-    QStringList defines;
-    if (!define.isEmpty()) {
-        define = define.trimmed();
-        if (define.indexOf(';') != -1)
-            defines = define.split(";");
-        else
-            defines.append(define);
-    }
-    return defines;
+    return mUI.mEditDefines->text().trimmed().split(QRegExp("\\s*;\\s*"), QString::SkipEmptyParts);
+}
+
+QStringList ProjectFileDialog::getUndefines() const
+{
+    const QString undefine = mUI.mEditUndefines->text().trimmed();
+    QStringList undefines = undefine.split(QRegExp("\\s*;\\s*"), QString::SkipEmptyParts);
+    undefines.removeDuplicates();
+    return undefines;
 }
 
 QStringList ProjectFileDialog::getCheckPaths() const
 {
-    const int count = mUI.mListCheckPaths->count();
-    QStringList paths;
-    for (int i = 0; i < count; i++) {
-        QListWidgetItem *item = mUI.mListCheckPaths->item(i);
-        paths << QDir::fromNativeSeparators(item->text());
-    }
-    return paths;
+    return getPaths(mUI.mListCheckPaths);
 }
 
 QStringList ProjectFileDialog::getExcludedPaths() const
 {
-    const int count = mUI.mListExcludedPaths->count();
-    QStringList paths;
-    for (int i = 0; i < count; i++) {
-        QListWidgetItem *item = mUI.mListExcludedPaths->item(i);
-        paths << QDir::fromNativeSeparators(item->text());
-    }
-    return paths;
+    return getPaths(mUI.mListExcludedPaths);
 }
 
 QStringList ProjectFileDialog::getLibraries() const
@@ -511,16 +501,12 @@ void ProjectFileDialog::setIncludepaths(const QStringList &includes)
 
 void ProjectFileDialog::setDefines(const QStringList &defines)
 {
-    QString definestr;
-    QString define;
-    foreach (define, defines) {
-        definestr += define;
-        definestr += ";";
-    }
-    // Remove ; from the end of the string
-    if (definestr.endsWith(';'))
-        definestr = definestr.left(definestr.length() - 1);
-    mUI.mEditDefines->setText(definestr);
+    mUI.mEditDefines->setText(defines.join(";"));
+}
+
+void ProjectFileDialog::setUndefines(const QStringList &undefines)
+{
+    mUI.mEditUndefines->setText(undefines.join(";"));
 }
 
 void ProjectFileDialog::setCheckPaths(const QStringList &paths)
@@ -650,14 +636,38 @@ void ProjectFileDialog::removeSuppression()
 {
     const int row = mUI.mListSuppressions->currentRow();
     QListWidgetItem *item = mUI.mListSuppressions->takeItem(row);
-    const std::string s = item->text().toStdString();
+    if (!item)
+        return;
+
+    int suppressionIndex = getSuppressionIndex(item->text());
+    if (suppressionIndex >= 0)
+        mSuppressions.removeAt(suppressionIndex);
     delete item;
-    for (int i = 0; i < mSuppressions.size(); ++i) {
-        if (mSuppressions[i].getText() == s) {
-            mSuppressions.removeAt(i);
-            break;
+}
+
+void ProjectFileDialog::editSuppression(const QModelIndex &)
+{
+    const int row = mUI.mListSuppressions->currentRow();
+    QListWidgetItem *item = mUI.mListSuppressions->item(row);
+    int suppressionIndex = getSuppressionIndex(item->text());
+    if (suppressionIndex >= 0) { // TODO what if suppression is not found?
+        NewSuppressionDialog dlg;
+        dlg.setSuppression(mSuppressions[suppressionIndex]);
+        if (dlg.exec() == QDialog::Accepted) {
+            mSuppressions[suppressionIndex] = dlg.getSuppression();
+            setSuppressions(mSuppressions);
         }
     }
+}
+
+int ProjectFileDialog::getSuppressionIndex(const QString &shortText) const
+{
+    const std::string s = shortText.toStdString();
+    for (int i = 0; i < mSuppressions.size(); ++i) {
+        if (mSuppressions[i].getText() == s)
+            return i;
+    }
+    return -1;
 }
 
 void ProjectFileDialog::browseMisraFile()
