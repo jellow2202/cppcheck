@@ -1,6 +1,6 @@
 /*
  * Cppcheck - A tool for static C/C++ code analysis
- * Copyright (C) 2007-2018 Cppcheck team.
+ * Copyright (C) 2007-2019 Cppcheck team.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -1494,8 +1494,9 @@ void Tokenizer::simplifyTypedef()
                             tok2 = tok2->next();
 
                             if (openParenthesis) {
-                                // skip over name
-                                tok2 = tok2->next();
+                                // Skip over name, if any
+                                if (Token::Match(tok2->next(), "%name%"))
+                                    tok2 = tok2->next();
 
                                 tok2->insertToken(")");
                                 tok2 = tok2->next();
@@ -1754,10 +1755,21 @@ bool Tokenizer::simplifyTokens1(const std::string &configuration)
     if (!simplifyTokenList1(list.getFiles().front().c_str()))
         return false;
 
-    list.createAst();
-    list.validateAst();
+    if (mTimerResults) {
+        Timer t("Tokenizer::simplifyTokens1::createAst", mSettings->showtime, mTimerResults);
+        list.createAst();
+        list.validateAst();
+    } else {
+        list.createAst();
+        list.validateAst();
+    }
 
-    createSymbolDatabase();
+    if (mTimerResults) {
+        Timer t("Tokenizer::simplifyTokens1::createSymbolDatabase", mSettings->showtime, mTimerResults);
+        createSymbolDatabase();
+    } else {
+        createSymbolDatabase();
+    }
 
     // Use symbol database to identify rvalue references. Split && to & &. This is safe, since it doesn't delete any tokens (which might be referenced by symbol database)
     for (const Variable* var : mSymbolDatabase->variableList()) {
@@ -1771,8 +1783,19 @@ bool Tokenizer::simplifyTokens1(const std::string &configuration)
         }
     }
 
-    mSymbolDatabase->setValueTypeInTokenList();
-    ValueFlow::setValues(&list, mSymbolDatabase, mErrorLogger, mSettings);
+    if (mTimerResults) {
+        Timer t("Tokenizer::simplifyTokens1::setValueType", mSettings->showtime, mTimerResults);
+        mSymbolDatabase->setValueTypeInTokenList();
+    } else {
+        mSymbolDatabase->setValueTypeInTokenList();
+    }
+
+    if (mTimerResults) {
+        Timer t("Tokenizer::simplifyTokens1::ValueFlow", mSettings->showtime, mTimerResults);
+        ValueFlow::setValues(&list, mSymbolDatabase, mErrorLogger, mSettings);
+    } else {
+        ValueFlow::setValues(&list, mSymbolDatabase, mErrorLogger, mSettings);
+    }
 
     printDebugOutput(1);
 
@@ -1838,8 +1861,14 @@ void Tokenizer::combineOperators()
 
             // combine +-*/ and =
             if (c2 == '=' && (std::strchr("+-*/%|^=!<>", c1))) {
-                if (cpp && Token::Match(tok->tokAt(-2), "< %any% >"))
-                    continue;
+                // skip templates
+                if (cpp && tok->str() == ">") {
+                    const Token *opening = tok->findOpeningBracket();
+                    if (opening) {
+                        if (Token::Match(opening->previous(), "%name%"))
+                            continue;
+                    }
+                }
                 tok->str(tok->str() + c2);
                 tok->deleteNext();
                 continue;
@@ -2663,7 +2692,11 @@ void Tokenizer::setVarIdPass1()
 
                 if (tok->str() == "{") {
                     bool isExecutable;
-                    if (tok->strAt(-1) == ")" || Token::Match(tok->tokAt(-2), ") %type%") ||
+                    const Token *prev = tok->previous();
+                    while (Token::Match(prev, "%name%|."))
+                        prev = prev->previous();
+                    const bool isLambda = prev && prev->str() == ")" && Token::simpleMatch(prev->link()->previous(), "] (");
+                    if ((!isLambda && (tok->strAt(-1) == ")" || Token::Match(tok->tokAt(-2), ") %type%"))) ||
                         (initlist && tok->strAt(-1) == "}")) {
                         isExecutable = true;
                     } else {
@@ -3872,7 +3905,12 @@ bool Tokenizer::simplifyTokenList1(const char FileName[])
 
     if (!isC()) {
         // Handle templates..
-        simplifyTemplates();
+        if (mTimerResults) {
+            Timer t("Tokenizer::tokenize::simplifyTemplates", mSettings->showtime, mTimerResults);
+            simplifyTemplates();
+        } else {
+            simplifyTemplates();
+        }
 
         // The simplifyTemplates have inner loops
         if (mSettings->terminated())
@@ -8808,7 +8846,9 @@ void Tokenizer::simplifyStructDecl()
             }
         }
         // check for anonymous enum
-        else if ((Token::simpleMatch(tok, "enum {") && Token::Match(tok->next()->link(), "} %type%| ,|;|[|(|{")) ||
+        else if ((Token::simpleMatch(tok, "enum {") &&
+                  !Token::Match(tok->tokAt(-3), "using %name% =") &&
+                  Token::Match(tok->next()->link(), "} %type%| ,|;|[|(|{")) ||
                  (Token::Match(tok, "enum : %type% {") && Token::Match(tok->linkAt(3), "} %type%| ,|;|[|(|{"))) {
             tok->insertToken("Anonymous" + MathLib::toString(count++));
         }
@@ -8918,7 +8958,7 @@ void Tokenizer::simplifyStructDecl()
                 }
 
                 // don't remove unnamed anonymous unions from a class, struct or union
-                if (!(!inFunction && tok1->str() == "union")) {
+                if (!(!inFunction && tok1->str() == "union") && !Token::Match(tok1->tokAt(-3), "using %name% =")) {
                     skip.pop();
                     tok1->deleteThis();
                     if (tok1->next() == tok) {

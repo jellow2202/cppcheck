@@ -10,8 +10,38 @@ import time
 from threading import Thread
 import sys
 import urllib
+import logging
+import logging.handlers
 
-OLD_VERSION = '1.86'
+OLD_VERSION = '1.87'
+
+
+# Set up logging
+logger = logging.getLogger()
+logger.setLevel(logging.INFO)
+# Logging to console
+handler_stream = logging.StreamHandler()
+logger.addHandler(handler_stream)
+# Log errors to a rotating file
+logfile = sys.path[0]
+if logfile:
+    logfile += '/'
+logfile += 'donate-cpu-server.log'
+handler_file = logging.handlers.RotatingFileHandler(filename=logfile, maxBytes=100*1024, backupCount=1)
+handler_file.setLevel(logging.ERROR)
+logger.addHandler(handler_file)
+
+
+# Set up an exception hook for all uncaught exceptions so they can be logged
+def handle_uncaught_exception(exc_type, exc_value, exc_traceback):
+    if issubclass(exc_type, KeyboardInterrupt):
+        sys.__excepthook__(exc_type, exc_value, exc_traceback)
+        return
+
+    logging.error("Uncaught exception", exc_info=(exc_type, exc_value, exc_traceback))
+
+
+sys.excepthook = handle_uncaught_exception
 
 
 def strDateTime():
@@ -30,6 +60,7 @@ def overviewReport():
     html += '<a href="time.html">Time report</a><br>\n'
     html += '<a href="check_library_function_report.html">checkLibraryFunction report</a><br>\n'
     html += '<a href="check_library_noreturn_report.html">checkLibraryNoReturn report</a><br>\n'
+    html += '<a href="check_library_use_ignore_report.html">checkLibraryUseIgnore report</a><br>\n'
     html += '</body></html>'
     return html
 
@@ -443,6 +474,7 @@ def timeReport(resultPath):
         total_time_factor = total_time_head / total_time_base
     else:
         total_time_factor = 0.0
+    html += 'Time for all packages (not just the ones listed above):\n'
     html += 'Total time: '.ljust(column_widths[0]) + ' ' + \
             str(total_time_base).rjust(column_widths[1]) + ' ' + \
             str(total_time_head).rjust(column_widths[2]) + ' ' + \
@@ -456,12 +488,15 @@ def timeReport(resultPath):
 
 
 def check_library_report(result_path, message_id):
-    if message_id not in ('checkLibraryNoReturn', 'checkLibraryFunction'):
+    if message_id not in ('checkLibraryNoReturn', 'checkLibraryFunction', 'checkLibraryUseIgnore'):
         error_message = 'Invalid value ' + message_id + ' for message_id parameter.'
         print(error_message)
         return error_message
+
+    functions_shown_max = 50000
     html = '<html><head><title>' + message_id + ' report</title></head><body>\n'
     html += '<h1>' + message_id + ' report</h1>\n'
+    html += 'Top ' + str(functions_shown_max) + ' functions are shown.'
     html += '<pre>\n'
     column_widths = [10, 100]
     html += '<b>'
@@ -469,7 +504,7 @@ def check_library_report(result_path, message_id):
             'Function'
     html += '</b>\n'
 
-    function_counts = dict()
+    function_counts = {}
     for filename in glob.glob(result_path + '/*'):
         if not os.path.isfile(filename):
             continue
@@ -480,19 +515,20 @@ def check_library_report(result_path, message_id):
             if not info_messages:
                 continue
             if line.endswith('[' + message_id + ']\n'):
-                if message_id is 'checkLibraryNoReturn':
-                    function_name = line[(line.find(': Function ') + len(': Function ')):line.rfind('should have') - 1]
-                else:
+                if message_id is 'checkLibraryFunction':
                     function_name = line[(line.find('for function ') + len('for function ')):line.rfind('[') - 1]
+                else:
+                    function_name = line[(line.find(': Function ') + len(': Function ')):line.rfind('should have') - 1]
                 function_counts[function_name] = function_counts.setdefault(function_name, 0) + 1
 
+    function_details_list = []
     for function_name, count in sorted(function_counts.iteritems(), key=lambda (k, v): (v, k), reverse=True):
-        if count < 10:
+        if len(function_details_list) >= functions_shown_max:
             break
-        html += str(count).rjust(column_widths[0]) + ' ' + \
-                '<a href="check_library-' + urllib.quote_plus(function_name) + '">' + function_name + '</a>\n'
+        function_details_list.append(str(count).rjust(column_widths[0]) + ' ' +
+                '<a href="check_library-' + urllib.quote_plus(function_name) + '">' + function_name + '</a>\n')
 
-    html += '\n'
+    html += ''.join(function_details_list)
     html += '</pre>\n'
     html += '</body></html>\n'
 
@@ -502,8 +538,8 @@ def check_library_report(result_path, message_id):
 # Lists all checkLibrary* messages regarding the given function name
 def check_library_function_name(result_path, function_name):
     print('check_library_function_name')
-    text = ''
     function_name = urllib.unquote_plus(function_name)
+    output_lines_list = []
     for filename in glob.glob(result_path + '/*'):
         if not os.path.isfile(filename):
             continue
@@ -522,14 +558,14 @@ def check_library_function_name(result_path, function_name):
             if '[checkLibrary' in line:
                 if (' ' + function_name) in line:
                     if url:
-                        text += url
+                        output_lines_list.append(url)
                         url = None
                     if cppcheck_options:
-                        text += cppcheck_options
+                        output_lines_list.append(cppcheck_options)
                         cppcheck_options = None
-                    text += line
+                    output_lines_list.append(line)
 
-    return text
+    return ''.join(output_lines_list)
 
 
 def sendAll(connection, data):
@@ -607,6 +643,9 @@ class HttpClientThread(Thread):
             elif url == 'check_library_noreturn_report.html':
                 text = check_library_report(self.resultPath + '/' + 'info_output', message_id='checkLibraryNoReturn')
                 httpGetResponse(self.connection, text, 'text/html')
+            elif url == 'check_library_use_ignore_report.html':
+                text = check_library_report(self.resultPath + '/' + 'info_output', message_id='checkLibraryUseIgnore')
+                httpGetResponse(self.connection, text, 'text/html')
             elif url.startswith('check_library-'):
                 print('check library function !')
                 function_name = url[len('check_library-'):]
@@ -678,9 +717,10 @@ def server(server_address_port, packages, packageIndex, resultPath):
             print('[' + strDateTime() + '] get:' + pkg)
             connection.send(pkg)
             connection.close()
-        elif cmd.startswith('write\nftp://'):
+        elif cmd.startswith('write\nftp://') or cmd.startswith('write-fast\nftp://'):
+            writeFast = cmd.startswith('write-fast')
             # read data
-            data = cmd[6:]
+            data = cmd[cmd.find('ftp'):]
             try:
                 t = 0
                 max_data_size = 2 * 1024 * 1024
@@ -713,15 +753,19 @@ def server(server_address_port, packages, packageIndex, resultPath):
                     print('results not written. url is not in packages.')
                     continue
             print('results added for package ' + res.group(1))
-            filename = resultPath + '/' + res.group(1)
+            if writeFast:
+                filename = resultPath + '-fast/' + res.group(1)
+            else:
+                filename = resultPath + '/' + res.group(1)
             with open(filename, 'wt') as f:
                 f.write(strDateTime() + '\n' + data)
             # track latest added results..
-            if len(latestResults) >= 20:
-                latestResults = latestResults[1:]
-            latestResults.append(filename)
-            with open('latest.txt', 'wt') as f:
-                f.write(' '.join(latestResults))
+            if not writeFast:
+                if len(latestResults) >= 20:
+                    latestResults = latestResults[1:]
+                latestResults.append(filename)
+                with open('latest.txt', 'wt') as f:
+                    f.write(' '.join(latestResults))
         elif cmd.startswith('write_info\nftp://'):
             # read data
             data = cmd[11:]

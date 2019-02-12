@@ -1,6 +1,6 @@
 /*
  * Cppcheck - A tool for static C/C++ code analysis
- * Copyright (C) 2007-2018 Cppcheck team.
+ * Copyright (C) 2007-2019 Cppcheck team.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -109,7 +109,11 @@ void CheckClass::constructors()
         if (scope->numConstructors == 0 && printStyle && !usedInUnion) {
             // If there is a private variable, there should be a constructor..
             for (const Variable &var : scope->varlist) {
+                const Token *initTok = var.nameToken();
+                while (Token::simpleMatch(initTok->next(), "["))
+                    initTok = initTok->linkAt(1);
                 if (var.isPrivate() && !var.isStatic() && !Token::Match(var.nameToken(), "%varid% ; %varid% =", var.declarationId()) &&
+                    !Token::Match(initTok, "%var%|] {|=") &&
                     (!var.isClass() || (var.type() && var.type()->needInitialization == Type::True))) {
                     noConstructorError(scope->classDef, scope->className, scope->classDef->str() == "struct");
                     break;
@@ -940,6 +944,10 @@ void CheckClass::initializationListUsage()
             if (!var || var->scope() != owner || var->isStatic())
                 continue;
             if (var->isPointer() || var->isReference() || var->isEnumType() || var->valueType()->type > ValueType::Type::ITERATOR)
+                continue;
+
+            // bailout: multi line lambda in rhs => do not warn
+            if (findLambdaEndToken(tok->tokAt(2)) && tok->tokAt(2)->findExpressionStartEndTokens().second->linenr() > tok->tokAt(2)->linenr())
                 continue;
 
             // Access local var member in rhs => do not warn

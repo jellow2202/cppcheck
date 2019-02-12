@@ -1,6 +1,6 @@
 /*
  * Cppcheck - A tool for static C/C++ code analysis
- * Copyright (C) 2007-2018 Cppcheck team.
+ * Copyright (C) 2007-2019 Cppcheck team.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -765,6 +765,7 @@ static void compilePrecedence3(Token *&tok, AST_state& state)
             compileUnaryOp(tok, state, compilePrecedence3);
         } else if (tok->str() == "(" && iscast(tok)) {
             Token* castTok = tok;
+            castTok->isCast(true);
             tok = tok->link()->next();
             compilePrecedence3(tok, state);
             compileUnaryOp(castTok, state, nullptr);

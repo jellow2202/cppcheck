@@ -1,6 +1,6 @@
 /*
  * Cppcheck - A tool for static C/C++ code analysis
- * Copyright (C) 2007-2018 Cppcheck team.
+ * Copyright (C) 2007-2019 Cppcheck team.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -160,6 +160,7 @@ private:
         TEST_CASE(varid_structinit); // #6406
         TEST_CASE(varid_arrayinit); // #7579
         TEST_CASE(varid_lambda_arg);
+        TEST_CASE(varid_lambda_mutable);
 
         TEST_CASE(varidclass1);
         TEST_CASE(varidclass2);
@@ -2144,10 +2145,9 @@ private:
     void varid_templateUsing() { // #5781 #7273
         const char code[] = "template<class T> using X = Y<T,4>;\n"
                             "X<int> x;";
-        TODO_ASSERT_EQUALS("\nY<int,4> x@1;\n",
-                           "1: template < class T > using X = Y < T , 4 > ;\n"
-                           "2: X < int > x@1 ;\n",
-                           tokenize(code));
+        ASSERT_EQUALS("1: ;\n"
+                      "2: Y < int , 4 > x@1 ;\n",
+                      tokenize(code));
     }
 
     void varid_not_template_in_condition() {
@@ -2187,7 +2187,7 @@ private:
 
         ASSERT_EQUALS("1: template < int d , typename A , typename B > struct S { } ;\n", tokenize("template<int d, typename A, typename B> struct S {};"));
 
-        ASSERT_EQUALS("1: typename A a@1 ;\n", tokenize("typename A a;"));
+        ASSERT_EQUALS("1: A a@1 ;\n", tokenize("typename A a;"));
     }
 
     void varid_rvalueref() {
@@ -2461,6 +2461,19 @@ private:
                             "2: func2 ( [ ] ( int x@2 , const std :: error_code & ec@3 ) { return x@2 + ec@3 ; } ) ;\n"
                             "3: }\n";
         ASSERT_EQUALS(exp2, tokenize(code2));
+    }
+
+    void varid_lambda_mutable() {
+        // #8957
+        const char code1[] = "static void func() {\n"
+                             "    auto x = []() mutable {};\n"
+                             "    dostuff(x);\n"
+                             "}";
+        const char exp1[] = "1: static void func ( ) {\n"
+                            "2: auto x@1 ; x@1 = [ ] ( ) mutable { } ;\n"
+                            "3: dostuff ( x@1 ) ;\n"
+                            "4: }\n";
+        ASSERT_EQUALS(exp1, tokenize(code1));
     }
 
     void varidclass1() {

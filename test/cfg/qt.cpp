@@ -10,6 +10,8 @@
 #include <QObject>
 #include <QString>
 #include <QtPlugin>
+#include <QFile>
+#include <cstdio>
 
 
 void QString1(QString s)
@@ -36,3 +38,49 @@ public:
     explicit MacroTest1(QObject *parent = 0);
     ~MacroTest1();
 };
+
+void validCode(int * pIntPtr)
+{
+    if (QFile::exists("test")) {
+    }
+
+    if (pIntPtr != Q_NULLPTR) {
+        *pIntPtr = 5;
+    }
+
+    if (pIntPtr && *pIntPtr == 1) {
+        forever {
+        }
+    } else if (pIntPtr && *pIntPtr == 2) {
+        Q_FOREVER {
+        }
+    }
+
+    if (Q_LIKELY(pIntPtr)) {}
+    if (Q_UNLIKELY(!pIntPtr)) {}
+
+    printf(QT_TR_NOOP("Hi"));
+}
+
+void ignoredReturnValue()
+{
+    // cppcheck-suppress ignoredReturnValue
+    QFile::exists("test");
+    QFile file1("test");
+    // cppcheck-suppress ignoredReturnValue
+    file1.exists();
+}
+
+void nullPointer(int * pIntPtr)
+{
+    int * pNullPtr = Q_NULLPTR;
+    // cppcheck-suppress nullPointer
+    *pNullPtr = 1;
+
+    if (pIntPtr != Q_NULLPTR) {
+        *pIntPtr = 2;
+    } else {
+        // cppcheck-suppress nullPointerRedundantCheck
+        *pIntPtr = 3;
+    }
+}

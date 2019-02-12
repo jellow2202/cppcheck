@@ -1,6 +1,6 @@
 /*
  * Cppcheck - A tool for static C/C++ code analysis
- * Copyright (C) 2007-2018 Cppcheck team.
+ * Copyright (C) 2007-2019 Cppcheck team.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -1804,6 +1804,9 @@ private:
         // pass allocated memory to function using a smart pointer
         TEST_CASE(smartPointerFunctionParam);
         TEST_CASE(resourceLeak);
+
+        // Test getAllocationType for subfunction
+        TEST_CASE(getAllocationType);
     }
 
     void functionParameter() {
@@ -2085,6 +2088,17 @@ private:
               "void foo() {\n"
               "  Holder { 0, fopen(\"file.txt\", \"r\")};\n"
               "}\n");
+        ASSERT_EQUALS("", errout.str());
+    }
+
+    void getAllocationType() {
+        // #7845
+        check("class Thing { Thing(); };\n"
+              "Thing * makeThing() { Thing *thing = new Thing; return thing; }\n"
+              "\n"
+              "void f() {\n"
+              "  makeThing();\n"
+              "}");
         ASSERT_EQUALS("", errout.str());
     }
 };

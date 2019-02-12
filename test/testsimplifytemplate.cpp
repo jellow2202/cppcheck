@@ -1,6 +1,6 @@
 /*
  * Cppcheck - A tool for static C/C++ code analysis
- * Copyright (C) 2007-2018 Cppcheck team.
+ * Copyright (C) 2007-2019 Cppcheck team.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -135,6 +135,10 @@ private:
         TEST_CASE(template95); // #7417
         TEST_CASE(template96); // #7854
         TEST_CASE(template97);
+        TEST_CASE(template98); // #8959
+        TEST_CASE(template99); // #8960
+        TEST_CASE(template100); // #8967
+        TEST_CASE(template101); // #8968
         TEST_CASE(template_specialization_1);  // #7868 - template specialization template <typename T> struct S<C<T>> {..};
         TEST_CASE(template_specialization_2);  // #7868 - template specialization template <typename T> struct S<C<T>> {..};
         TEST_CASE(template_enum);  // #6299 Syntax error in complex enum declaration (including template)
@@ -1281,7 +1285,7 @@ private:
         tok(code); // don't crash
     }
 
-    void template65() { // #8321
+    void template65() { // #8321 (crash)
         const char code[] = "namespace bpp\n"
                             "{\n"
                             "template<class N, class E, class DAGraphImpl>\n"
@@ -1297,7 +1301,18 @@ private:
                             "  AssociationDAGlobalGraphObserver<string,unsigned int> grObs;\n"
                             " return 1;\n"
                             "}";
-        tok(code); // don't crash
+        const char exp [] = "namespace bpp "
+                            "{ "
+                            "class AssociationDAGraphImplObserver<string,unsignedint,DAGlobalGraph> ; "
+                            "} "
+                            "using namespace bpp ; "
+                            "int main ( ) { "
+                            "bpp :: AssociationDAGraphImplObserver<string,unsignedint,DAGlobalGraph> grObs ; "
+                            "return 1 ; "
+                            "} class bpp :: AssociationDAGraphImplObserver<string,unsignedint,DAGlobalGraph> : "
+                            "public AssociationGraphImplObserver < std :: string , int , DAGlobalGraph > "
+                            "{ } ;";
+        ASSERT_EQUALS(exp, tok(code));
     }
 
     void template66() { // #8725
@@ -2052,6 +2067,75 @@ private:
         ASSERT_EQUALS(exp, tok(code));
     }
 
+    void template98() { // #8959
+        const char code[] = "template <typename T>\n"
+                            "using unique_ptr_with_deleter = std::unique_ptr<T, std::function<void(T*)>>;\n"
+                            "class A {};\n"
+                            "static void func() {\n"
+                            "    unique_ptr_with_deleter<A> tmp(new A(), [](A* a) {\n"
+                            "        delete a;\n"
+                            "    });\n"
+                            "}";
+        const char exp[] = "; "
+                           "class A { } ; "
+                           "static void func ( ) { "
+                           "std :: unique_ptr < A , std :: function < void ( A * ) > > tmp ( new A ( ) , [ ] ( A * a ) { "
+                           "delete a ; "
+                           "} ) ; "
+                           "}";
+        ASSERT_EQUALS(exp, tok(code));
+    }
+
+    void template99() { // #8960
+        const char code[] = "template <typename T>\n"
+                            "class Base {\n"
+                            "public:\n"
+                            "    using ArrayType = std::vector<Base<T>>;\n"
+                            "};\n"
+                            "using A = Base<int>;\n"
+                            "static A::ArrayType array;\n";
+        const char exp[] = "class Base<int> ; "
+                           "static std :: vector < Base<int> > array ; "
+                           "class Base<int> { "
+                           "public: "
+                           "} ;";
+
+        ASSERT_EQUALS(exp, tok(code));
+    }
+
+    void template100() { // #8967
+        const char code[] = "enum class Device { I2C0, I2C1 };\n"
+                            "template <Device D>\n"
+                            "const char* deviceFile;\n"
+                            "template <>\n"
+                            "const char* deviceFile<Device::I2C0> = \"/tmp/i2c-0\";\n";
+
+        const char exp[] = "enum class Device { I2C0 , I2C1 } ; "
+                           "template < Device D > "
+                           "const char * deviceFile ; "
+                           "const char * deviceFile<Device::I2C0> ; deviceFile<Device::I2C0> = \"/tmp/i2c-0\" ;";
+
+        ASSERT_EQUALS(exp, tok(code));
+    }
+
+    void template101() { // #8968
+        const char code[] = "class A {\n"
+                            "public:\n"
+                            "    using ArrayType = std::vector<int>;\n"
+                            "    void func(typename ArrayType::size_type i) {\n"
+                            "    }\n"
+                            "};";
+
+        const char exp[] = "class A { "
+                           "public: "
+                           "void func ( std :: vector < int > :: size_type i ) { "
+                           "} "
+                           "} ;";
+
+        ASSERT_EQUALS(exp, tok(code));
+        ASSERT_EQUALS("", errout.str());
+    }
+
     void template_specialization_1() {  // #7868 - template specialization template <typename T> struct S<C<T>> {..};
         const char code[] = "template <typename T> struct C {};\n"
                             "template <typename T> struct S {a};\n"
@@ -2267,6 +2351,25 @@ private:
                                "{ int ar [ 2 ] ; } ; "
                                "class A<int,3> "
                                "{ int ar [ 3 ] ; } ;";
+            ASSERT_EQUALS(exp, tok(code));
+        }
+        {
+            const char code[] = "template<typename Lhs, int TriangularPart = (int(Lhs::Flags) & LowerTriangularBit)>\n"
+                                "struct ei_solve_triangular_selector;\n"
+                                "template<typename Lhs, int UpLo>\n"
+                                "struct ei_solve_triangular_selector<Lhs,UpLo> {\n"
+                                "};\n"
+                                "template<typename Lhs, int TriangularPart>\n"
+                                "struct ei_solve_triangular_selector { };";
+
+            const char exp[] = "template < typename Lhs , int TriangularPart = ( int ( Lhs :: Flags ) & LowerTriangularBit ) > "
+                               "struct ei_solve_triangular_selector ; "
+                               "template < typename Lhs , int UpLo > "
+                               "struct ei_solve_triangular_selector < Lhs , UpLo > { "
+                               "} ; "
+                               "template < typename Lhs , int TriangularPart = ( int ( Lhs :: Flags ) & LowerTriangularBit ) > "
+                               "struct ei_solve_triangular_selector { } ;";
+
             ASSERT_EQUALS(exp, tok(code));
         }
     }

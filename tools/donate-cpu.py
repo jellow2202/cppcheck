@@ -34,6 +34,12 @@ import tarfile
 import platform
 
 
+# Version scheme (MAJOR.MINOR.PATCH) should orientate on "Semantic Versioning" https://semver.org/
+# Every change in this script should result in increasing the version number accordingly (exceptions may be cosmetic
+# changes)
+CLIENT_VERSION = "1.1.3"
+
+
 def checkRequirements():
     result = True
     for app in ['g++', 'git', 'make', 'wget']:
@@ -218,24 +224,32 @@ def hasInclude(path, includes):
     return False
 
 
-def scanPackage(workPath, cppcheck, jobs):
+def scanPackage(workPath, cppcheckPath, jobs, fast):
     print('Analyze..')
     os.chdir(workPath)
-    libraries = ' --library=posix'
-    if hasInclude('temp', ['<wx/', '"wx/']):
-        libraries += ' --library=wxwidgets'
-    if hasInclude('temp', ['<QString>', '<QtWidgets>', '<QtGui/']):
-        libraries += ' --library=qt'
-    if hasInclude('temp', ['<zlib.h>']):
-        libraries += ' --library=zlib'
+    libraries = ' --library=posix --library=gnu'
     if hasInclude('temp', ['<gtk/gtk.h>', '<glib.h>', '<glib/']):
         libraries += ' --library=gtk'
     if hasInclude('temp', ['<X11/', '<Xm/']):
         libraries += ' --library=motif'
-#    if hasInclude('temp', ['<boost/']):
-#        libraries += ' --library=boost'
-    options = jobs + libraries + ' --library=gnu -D__GCC__ --check-library --inconclusive --enable=style,information --platform=unix64 --template=daca2 -rp=temp temp'
-    cmd = 'nice ' + cppcheck + ' ' + options
+    if os.path.exists(cppcheckPath + '/cfg/python.cfg') and hasInclude('temp', ['<Python.h>']):
+        libraries += ' --library=python'
+    if hasInclude('temp', ['<QApplication>', '<QString>', '<QWidget>', '<QtWidgets>', '<QtGui']):
+        libraries += ' --library=qt'
+    if hasInclude('temp', ['<wx/', '"wx/']):
+        libraries += ' --library=wxwidgets'
+    if hasInclude('temp', ['<zlib.h>']):
+        libraries += ' --library=zlib'
+    if os.path.exists(cppcheckPath + '/cfg/boost.cfg') and hasInclude('temp', ['<boost/']):
+        libraries += ' --library=boost'
+    if hasInclude('temp', ['<SDL.h>']):
+        libraries += ' --library=sdl'
+
+# Reference for GNU C: https://gcc.gnu.org/onlinedocs/cpp/Common-Predefined-Macros.html
+    options = jobs + libraries + ' -D__GNUC__ --check-library --inconclusive --enable=style,information --platform=unix64 --template=daca2 -rp=temp temp'
+    if fast:
+        options = '--experimental-fast ' + options
+    cmd = 'nice ' + cppcheckPath + '/cppcheck' + ' ' + options
     print(cmd)
     startTime = time.time()
     p = subprocess.Popen(cmd.split(), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -252,19 +266,18 @@ def scanPackage(workPath, cppcheck, jobs):
         print('Crash!')
         return -1, '', '', -1, options
     elapsedTime = stopTime - startTime
-    information_messages = ''
-    issue_messages = ''
+    information_messages_list = []
+    issue_messages_list = []
     count = 0
     for line in stderr.split('\n'):
         if ': information: ' in line:
-            information_messages += line + '\n'
-        else:
-            if len(line) > 0:
-                issue_messages += line + '\n'
-                if re.match(r'.*:[0-9]+:.*\]$', line):
-                    count += 1
+            information_messages_list.append(line + '\n')
+        elif line:
+            issue_messages_list.append(line + '\n')
+            if re.match(r'.*:[0-9]+:.*\]$', line):
+                count += 1
     print('Number of issues: ' + str(count))
-    return count, issue_messages, information_messages, elapsedTime, options
+    return count, ''.join(issue_messages_list), ''.join(information_messages_list), elapsedTime, options
 
 
 def splitResults(results):
@@ -325,7 +338,11 @@ def uploadResults(package, results, server_address):
         try:
             sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             sock.connect(server_address)
-            sendAll(sock, 'write\n' + package + '\n' + results + '\nDONE')
+            if results.startswith('FAST'):
+                cmd = 'write-fast\n'
+            else:
+                cmd = 'write\n'
+            sendAll(sock, cmd + package + '\n' + results + '\nDONE')
             sock.close()
             print('Results have been successfully uploaded.')
             return True
@@ -450,10 +467,10 @@ while True:
     head_info_msg = ''
     for ver in cppcheckVersions:
         if ver == 'head':
-            cppcheck = 'cppcheck/cppcheck'
+            current_cppcheck_dir = 'cppcheck'
         else:
-            cppcheck = ver + '/cppcheck'
-        c, errout, info, t, cppcheck_options = scanPackage(workpath, cppcheck, jobs)
+            current_cppcheck_dir = ver
+        c, errout, info, t, cppcheck_options = scanPackage(workpath, current_cppcheck_dir, jobs, False)
         if c < 0:
             crash = True
             count += ' Crash!'
@@ -463,6 +480,16 @@ while True:
         resultsToDiff.append(errout)
         if ver == 'head':
             head_info_msg = info
+
+            # Fast results
+            fast_c, fast_errout, fast_info, fast_t, fast_cppcheck_options = scanPackage(workpath, current_cppcheck_dir, jobs, True)
+            if c > 0 and errout and fast_errout:
+                output = 'FAST\n'
+                output += 'elapsed-time: %.1f %.1f' % (t, fast_t)
+                output += '\ndiff:\n'
+                output += diffResults(workpath, 'head', errout, 'fast', fast_errout)
+                uploadResults(package, output, server_address)
+
     results_exist = True
     if len(resultsToDiff[0]) + len(resultsToDiff[1]) == 0:
         results_exist = False
@@ -475,6 +502,7 @@ while True:
     output = 'cppcheck-options: ' + cppcheck_options + '\n'
     output += 'platform: ' + platform.platform() + '\n'
     output += 'python: ' + platform.python_version() + '\n'
+    output += 'client-version: ' + CLIENT_VERSION + '\n'
     output += 'cppcheck: ' + ' '.join(cppcheckVersions) + '\n'
     output += 'count:' + count + '\n'
     output += 'elapsed-time:' + elapsedTime + '\n'

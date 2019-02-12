@@ -1,6 +1,6 @@
 /*
  * Cppcheck - A tool for static C/C++ code analysis
- * Copyright (C) 2007-2018 Cppcheck team.
+ * Copyright (C) 2007-2019 Cppcheck team.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -159,6 +159,8 @@ const Token *findLambdaEndToken(const Token *first);
  *   a & x;
  */
 bool isLikelyStreamRead(bool cpp, const Token *op);
+
+bool isCPPCast(const Token* tok);
 
 bool isConstVarExpression(const Token *tok);
 

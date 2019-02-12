@@ -1,6 +1,6 @@
 /*
  * Cppcheck - A tool for static C/C++ code analysis
- * Copyright (C) 2007-2018 Cppcheck team.
+ * Copyright (C) 2007-2019 Cppcheck team.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -53,6 +53,19 @@ static TimerResults S_timerResults;
 
 // CWE ids used
 static const CWE CWE398(398U);  // Indicator of Poor Code Quality
+
+static std::vector<std::string> split(const std::string &str, const std::string &sep)
+{
+    std::vector<std::string> ret;
+    for (std::string::size_type defineStartPos = 0U; defineStartPos < str.size();) {
+        const std::string::size_type defineEndPos = str.find(sep, defineStartPos);
+        ret.push_back((defineEndPos == std::string::npos) ? str.substr(defineStartPos) : str.substr(defineStartPos, defineEndPos - defineStartPos));
+        if (defineEndPos == std::string::npos)
+            break;
+        defineStartPos = defineEndPos + 1U;
+    }
+    return ret;
+}
 
 CppCheck::CppCheck(ErrorLogger &errorLogger, bool useGlobalSuppressions)
     : mErrorLogger(errorLogger), mExitCode(0), mSuppressInternalErrorFound(false), mUseGlobalSuppressions(useGlobalSuppressions), mTooManyConfigs(false), mSimplify(true)
@@ -325,12 +338,16 @@ unsigned int CppCheck::checkFile(const std::string& filename, const std::string 
             if (!mSettings.force && ++checkCount > mSettings.maxConfigs)
                 break;
 
-            mCurrentConfig = currCfg;
-
             if (!mSettings.userDefines.empty()) {
-                if (!mCurrentConfig.empty())
-                    mCurrentConfig = ";" + mCurrentConfig;
-                mCurrentConfig = mSettings.userDefines + mCurrentConfig;
+                mCurrentConfig = mSettings.userDefines;
+                const std::vector<std::string> v1(split(mSettings.userDefines, ";"));
+                for (const std::string &cfg: split(currCfg, ";")) {
+                    if (std::find(v1.begin(), v1.end(), cfg) == v1.end()) {
+                        mCurrentConfig += ";" + cfg;
+                    }
+                }
+            } else {
+                mCurrentConfig = currCfg;
             }
 
             if (mSettings.preprocessOnly) {
@@ -419,12 +436,14 @@ unsigned int CppCheck::checkFile(const std::string& filename, const std::string 
 
                 // simplify more if required, skip rest of iteration if failed
                 if (mSimplify) {
-                    // if further simplification fails then skip rest of iteration
-                    Timer timer3("Tokenizer::simplifyTokenList2", mSettings.showtime, &S_timerResults);
-                    result = mTokenizer.simplifyTokenList2();
-                    timer3.Stop();
-                    if (!result)
-                        continue;
+                    if (!mSettings.experimentalFast) {
+                        // if further simplification fails then skip rest of iteration
+                        Timer timer3("Tokenizer::simplifyTokenList2", mSettings.showtime, &S_timerResults);
+                        result = mTokenizer.simplifyTokenList2();
+                        timer3.Stop();
+                        if (!result)
+                            continue;
+                    }
 
                     // Check simplified tokens
                     checkSimplifiedTokens(mTokenizer);
@@ -1036,6 +1055,8 @@ void CppCheck::getErrorMessages()
 bool CppCheck::analyseWholeProgram()
 {
     bool errors = false;
+    // Init CTU
+    CTU::maxCtuDepth = mSettings.maxCtuDepth;
     // Analyse the tokens
     CTU::FileInfo ctu;
     for (const Check::FileInfo *fi : mFileInfo) {
@@ -1099,6 +1120,9 @@ void CppCheck::analyseWholeProgram(const std::string &buildDir, const std::map<s
             }
         }
     }
+
+    // Set CTU max depth
+    CTU::maxCtuDepth = mSettings.maxCtuDepth;
 
     // Analyse the tokens
     for (Check *check : Check::instances())

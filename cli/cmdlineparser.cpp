@@ -1,6 +1,6 @@
 /*
  * Cppcheck - A tool for static C/C++ code analysis
- * Copyright (C) 2007-2018 Cppcheck team.
+ * Copyright (C) 2007-2019 Cppcheck team.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -154,6 +154,15 @@ bool CmdLineParser::parseFromArgs(int argc, const char* const argv[])
             // dump cppcheck data
             else if (std::strcmp(argv[i], "--dump") == 0)
                 mSettings->dump = true;
+
+            // max ctu depth
+            else if (std::strncmp(argv[i], "--max-ctu-depth=", 16) == 0)
+                mSettings->maxCtuDepth = std::atoi(argv[i] + 16);
+
+            else if (std::strcmp(argv[i], "--experimental-fast") == 0)
+                // Skip slow simplifications and see how that affect the results, the
+                // goal is to remove the simplifications.
+                mSettings->experimentalFast = true;
 
             // (Experimental) exception handling inside cppcheck client
             else if (std::strcmp(argv[i], "--exception-handling") == 0)
@@ -520,19 +529,53 @@ bool CmdLineParser::parseFromArgs(int argc, const char* const argv[])
             // --project
             else if (std::strncmp(argv[i], "--project=", 10) == 0) {
                 const std::string projectFile = argv[i]+10;
-                const ImportProject::Type projType = mSettings->project.import(projectFile);
-                if (projType == ImportProject::VS_SLN || projType == ImportProject::VS_VCXPROJ) {
+                ImportProject::Type projType = mSettings->project.import(projectFile, mSettings);
+                if (projType == ImportProject::Type::CPPCHECK_GUI) {
+                    mPathNames = mSettings->project.guiProject.pathNames;
+                    for (const std::string &lib : mSettings->project.guiProject.libraries) {
+                        if (!CppCheckExecutor::tryLoadLibrary(mSettings->library, argv[0], lib.c_str()))
+                            return false;
+                    }
+
+                    const std::string platform(mSettings->project.guiProject.platform);
+
+                    if (platform == "win32A")
+                        mSettings->platform(Settings::Win32A);
+                    else if (platform == "win32W")
+                        mSettings->platform(Settings::Win32W);
+                    else if (platform == "win64")
+                        mSettings->platform(Settings::Win64);
+                    else if (platform == "unix32")
+                        mSettings->platform(Settings::Unix32);
+                    else if (platform == "unix64")
+                        mSettings->platform(Settings::Unix64);
+                    else if (platform == "native")
+                        mSettings->platform(Settings::Native);
+                    else if (platform == "unspecified")
+                        mSettings->platform(Settings::Unspecified);
+                    else if (!mSettings->loadPlatformFile(argv[0], platform)) {
+                        std::string message("cppcheck: error: unrecognized platform: \"");
+                        message += platform;
+                        message += "\".";
+                        printMessage(message);
+                        return false;
+                    }
+
+                    if (!mSettings->project.guiProject.projectFile.empty())
+                        projType = mSettings->project.import(mSettings->project.guiProject.projectFile, mSettings);
+                }
+                if (projType == ImportProject::Type::VS_SLN || projType == ImportProject::Type::VS_VCXPROJ) {
                     if (!CppCheckExecutor::tryLoadLibrary(mSettings->library, argv[0], "windows.cfg")) {
                         // This shouldn't happen normally.
                         printMessage("cppcheck: Failed to load 'windows.cfg'. Your Cppcheck installation is broken. Please re-install.");
                         return false;
                     }
                 }
-                if (projType == ImportProject::MISSING) {
+                if (projType == ImportProject::Type::MISSING) {
                     printMessage("cppcheck: Failed to open project '" + projectFile + "'.");
                     return false;
                 }
-                if (projType == ImportProject::UNKNOWN) {
+                if (projType == ImportProject::Type::UNKNOWN) {
                     printMessage("cppcheck: Failed to load project '" + projectFile + "'. The format is unknown.");
                     return false;
                 }
@@ -979,6 +1022,9 @@ void CmdLineParser::printHelp()
               "                         distributed with Cppcheck is loaded automatically.\n"
               "                         For more information about library files, read the\n"
               "                         manual.\n"
+              "    --max-ctu-depth=N    Max depth in whole program analysis. The default value\n"
+              "                         is 2. A larger value will mean more errors can be found\n"
+              "                         but also means the analysis will be slower.\n"
               "    --output-file=<file> Write results to file, rather than standard error.\n"
               "    --project=<file>     Run Cppcheck on project. The <file> can be a Visual\n"
               "                         Studio Solution (*.sln), Visual Studio Project\n"
@@ -1111,5 +1157,11 @@ void CmdLineParser::printHelp()
               "  cppcheck -I inc1/ -I inc2/ f.cpp\n"
               "\n"
               "For more information:\n"
-              "    http://cppcheck.net/manual.pdf\n";
+              "    http://cppcheck.net/manual.pdf\n"
+              "\n"
+              "Many thanks to the 3rd party libraries we use:\n"
+              " * tinyxml2 -- loading project/library/ctu files.\n"
+              " * picojson -- loading compile database.\n"
+              " * pcre -- rules.\n"
+              " * qt -- used in GUI\n";
 }

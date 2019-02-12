@@ -1,6 +1,6 @@
 /*
  * Cppcheck - A tool for static C/C++ code analysis
- * Copyright (C) 2007-2018 Cppcheck team.
+ * Copyright (C) 2007-2019 Cppcheck team.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -172,6 +172,7 @@ private:
         TEST_CASE(const63); // ticket #5983
         TEST_CASE(const64); // ticket #6268
         TEST_CASE(const65); // ticket #8693
+        TEST_CASE(const66); // ticket #7714
         TEST_CASE(const_handleDefaultParameters);
         TEST_CASE(const_passThisToMemberOfOtherClass);
         TEST_CASE(assigningPointerToPointerIsNotAConstOperation);
@@ -5632,6 +5633,16 @@ private:
         ASSERT_EQUALS("", errout.str());
     }
 
+    void const66() {
+        checkConst("struct C {\n"
+                   "    C() : n(0) {}\n"
+                   "    void f(int v) { g((char *) &v); }\n"
+                   "    void g(char *) { n++; }\n"
+                   "    int n;\n"
+                   "};\n");
+        ASSERT_EQUALS("", errout.str());
+    }
+
     void const_handleDefaultParameters() {
         checkConst("struct Foo {\n"
                    "    void foo1(int i, int j = 0) {\n"
@@ -6632,6 +6643,17 @@ private:
                                      "        std::ostringstream ostr;\n"
                                      "        ostr << x;\n"
                                      "        a = ostr.str();\n"
+                                     "    }\n"
+                                     "};");
+        ASSERT_EQUALS("", errout.str());
+
+        // bailout: multi line lambda in rhs => do not warn
+        checkInitializationListUsage("class Fred {\n"
+                                     "    std::function f;\n"
+                                     "    Fred() {\n"
+                                     "        f = [](){\n"
+                                     "            return 1;\n"
+                                     "        };\n"
                                      "    }\n"
                                      "};");
         ASSERT_EQUALS("", errout.str());

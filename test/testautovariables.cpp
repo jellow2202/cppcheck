@@ -1,6 +1,6 @@
 /*
  * Cppcheck - A tool for static C/C++ code analysis
- * Copyright (C) 2007-2018 Cppcheck team.
+ * Copyright (C) 2007-2019 Cppcheck team.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -112,6 +112,7 @@ private:
         TEST_CASE(returnReferenceCalculation);
         TEST_CASE(returnReferenceLambda);
         TEST_CASE(returnReferenceInnerScope);
+        TEST_CASE(returnReferenceRecursive);
 
         TEST_CASE(danglingReference);
 
@@ -1243,6 +1244,15 @@ private:
               "    };\n"
               "    return _make(_Wrapper::call, pmf);\n"
               "}");
+        ASSERT_EQUALS("", errout.str());
+    }
+
+    void returnReferenceRecursive() {
+        check("int& f() { return f(); }");
+        ASSERT_EQUALS("", errout.str());
+
+        check("int& g(int& i) { return i; }\n"
+              "int& f() { return g(f()); }\n");
         ASSERT_EQUALS("", errout.str());
     }
 
